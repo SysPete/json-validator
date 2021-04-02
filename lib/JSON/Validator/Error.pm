@@ -1,5 +1,10 @@
 package JSON::Validator::Error;
-use Mojo::Base -base;
+
+use warnings;
+use strict;
+
+use Moo;
+use namespace::clean;
 
 use overload q("") => \&to_string, bool => sub {1}, fallback => 1;
 
@@ -52,49 +57,60 @@ our $MESSAGES = {
   }
 };
 
-has details => sub { [qw(generic generic)] };
+has details => (
+  is      => 'ro',
+  default => sub { [qw(generic generic)] },
+);
 
-has message => sub {
-  my $self    = shift;
-  my $details = $self->details;
-  my $message;
+has message => (
+  is      => 'ro',
+  lazy    => 1,
+  default => sub {
+    my $self    = shift;
+    my $details = $self->details;
+    my $message;
 
-  if (($details->[0] || '') eq 'format') {
-    $message = '%3';
-  }
-  elsif (($details->[1] || '') eq 'type' and @$details == 3) {
-    $message = 'Expected %1 - got %3.';
-  }
-  elsif (my $group = $MESSAGES->{$details->[0]}) {
-    $message = $group->{$details->[1] || 'default'};
-  }
+    if (($details->[0] || '') eq 'format') {
+      $message = '%3';
+    }
+    elsif (($details->[1] || '') eq 'type' and @$details == 3) {
+      $message = 'Expected %1 - got %3.';
+    }
+    elsif (my $group = $MESSAGES->{$details->[0]}) {
+      $message = $group->{$details->[1] || 'default'};
+    }
 
-  return join ' ', Failed => @$details unless defined $message;
+    return join ' ', Failed => @$details unless defined $message;
 
-  $message =~ s!\%(\d)\b!{$details->[$1 - 1] // ''}!ge;
-  return $message;
-};
+    $message =~ s!\%(\d)\b!{$details->[$1 - 1] // ''}!ge;
+    return $message;
+  },
+);
 
-has path => '/';
+has path => (
+  is      => 'rw', # XXX why mutable?
+  default => '/',
+);
 
-sub new {
-  my $class = shift;
+around BUILDARGS => sub {
+  my ( $orig, $class, @raw_args ) = @_;
 
   # Constructed with attributes
-  return $class->SUPER::new($_[0]) if ref $_[0] eq 'HASH';
+  return $class->$orig($raw_args[0]) if ref $raw_args[0] eq 'HASH';
 
   # Constructed with ($path, ...)
-  my $self = $class->SUPER::new;
-  $self->{path} = shift || '/';
+  my ( $path, $arg ) = @raw_args;
+  $path ||= '/';
 
-  # Constructed with ($path, $message)
-  $self->message(shift) unless ref $_[0];
-
-  # Constructed with ($path, \@details)
-  $self->details(shift) if ref $_[0];
-
-  return $self;
-}
+  if ( ref $arg ) {
+    # Constructed with ($path, \@details)
+    return $class->$orig({ path => $path, details => $arg });
+  }
+  else {
+    # Constructed with ($path, $message)
+    return $class->$orig({ path => $path, message => $arg });
+  }
+};
 
 sub to_string { sprintf '%s: %s', $_[0]->path, $_[0]->message }
 sub TO_JSON   { {message => $_[0]->message, path => $_[0]->path} }
