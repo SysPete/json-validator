@@ -1,5 +1,7 @@
 package JSON::Validator::Formats;
-use Mojo::Base -strict;
+
+use warnings;
+use strict;
 
 use Scalar::Util 'looks_like_number';
 
@@ -47,36 +49,36 @@ sub check_date_time {
 
 sub check_double { _match_number(double => $_[0], '') }
 
-sub check_duration {
-  state $rfc3339_duration_re = do {
-    my $num  = qr{\d+(?:[,.]\d+)?};
-    my $sec  = qr/${num}S/;
-    my $min  = qr/${num}M(?:$sec)?/;
-    my $hour = qr/${num}H(?:$min)?/;
-    my $day  = qr/${num}D(?:$hour)?/;
-    my $mon  = qr/${num}M(?:$day)?/;
-    my $year = qr/${num}Y(?:$mon)?/;
-    my $week = qr/${num}W/;
-    my $time = qr/T($hour|$min|$sec)/;
-    my $date = qr/(?:$day|$mon|$year)(?:$time)?/;
-    qr{^P(?:$date|$time|$week)$};
-  };
+my $rfc3339_duration_re = do {
+  my $num  = qr{\d+(?:[,.]\d+)?};
+  my $sec  = qr/${num}S/;
+  my $min  = qr/${num}M(?:$sec)?/;
+  my $hour = qr/${num}H(?:$min)?/;
+  my $day  = qr/${num}D(?:$hour)?/;
+  my $mon  = qr/${num}M(?:$day)?/;
+  my $year = qr/${num}Y(?:$mon)?/;
+  my $week = qr/${num}W/;
+  my $time = qr/T($hour|$min|$sec)/;
+  my $date = qr/(?:$day|$mon|$year)(?:$time)?/;
+  qr{^P(?:$date|$time|$week)$};
+};
 
+sub check_duration {
   return $_[0] =~ $rfc3339_duration_re ? undef : 'Does not match duration format.';
 }
 
+my $email_rfc5322_re = do {
+  my $atom           = qr;[a-zA-Z0-9_!#\$\%&'*+/=?\^`{}~|\-]+;o;
+  my $quoted_string  = qr/"(?:\\[^\r\n]|[^\\"])*"/o;
+  my $domain_literal = qr/\[(?:\\[\x01-\x09\x0B-\x0c\x0e-\x7f]|[\x21-\x5a\x5e-\x7e])*\]/o;
+  my $dot_atom       = qr/$atom(?:[.]$atom)*/o;
+  my $local_part     = qr/(?:$dot_atom|$quoted_string)/o;
+  my $domain         = qr/(?:$dot_atom|$domain_literal)/o;
+
+  qr/$local_part\@$domain/o;
+};
+
 sub check_email {
-  state $email_rfc5322_re = do {
-    my $atom           = qr;[a-zA-Z0-9_!#\$\%&'*+/=?\^`{}~|\-]+;o;
-    my $quoted_string  = qr/"(?:\\[^\r\n]|[^\\"])*"/o;
-    my $domain_literal = qr/\[(?:\\[\x01-\x09\x0B-\x0c\x0e-\x7f]|[\x21-\x5a\x5e-\x7e])*\]/o;
-    my $dot_atom       = qr/$atom(?:[.]$atom)*/o;
-    my $local_part     = qr/(?:$dot_atom|$quoted_string)/o;
-    my $domain         = qr/(?:$dot_atom|$domain_literal)/o;
-
-    qr/$local_part\@$domain/o;
-  };
-
   return $_[0] =~ $email_rfc5322_re ? undef : 'Does not match email format.';
 }
 
@@ -199,12 +201,12 @@ sub check_uri_template {
   return check_iri($_[0]);
 }
 
-sub check_uuid {
-  state $uuid_re = do {
-    my $x = qr{[0-9A-Fa-f]};
-    qr{^$x$x$x$x$x$x$x$x-$x$x$x$x-[0-9]$x$x$x-$x$x$x$x-$x$x$x$x$x$x$x$x$x$x$x$x$};
-  };
+my $uuid_re = do {
+  my $x = qr{[0-9A-Fa-f]};
+  qr{^$x$x$x$x$x$x$x$x-$x$x$x$x-[0-9]$x$x$x-$x$x$x$x-$x$x$x$x$x$x$x$x$x$x$x$x$};
+};
 
+sub check_uuid {
   return $_[0] =~ $uuid_re ? undef : 'Does not match uuid format.';
 }
 
