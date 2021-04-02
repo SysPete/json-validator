@@ -3,6 +3,7 @@ use Mojo::Base -base;
 use Exporter 'import';
 
 use Carp qw(confess);
+use Digest::SHA qw(sha1_hex);
 use JSON::Validator::Formats;
 use JSON::Validator::Ref;
 use JSON::Validator::Store;
@@ -11,7 +12,6 @@ use List::Util qw(uniq);
 use Mojo::File qw(path);
 use Mojo::JSON qw(false true);
 use Mojo::URL;
-use Mojo::Util qw(sha1_sum);
 use Scalar::Util qw(blessed refaddr);
 
 use constant RECURSION_LIMIT => $ENV{JSON_VALIDATOR_RECURSION_LIMIT} || 100;
@@ -224,7 +224,7 @@ sub _definitions_path {
   my $key = $fqn->fragment;
   if ($fqn->scheme and $fqn->scheme eq 'file') {
     $key = join '-', map { s!^\W+!!; $_ } grep {$_} path($fqn->path)->basename, $key,
-      substr(sha1_sum($fqn->path), 0, 10);
+      substr(sha1_hex($fqn->path), 0, 10);
   }
 
   # Fallback or nicer path name
