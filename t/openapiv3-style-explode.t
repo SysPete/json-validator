@@ -1,4 +1,5 @@
 use Mojo::Base -strict;
+use JSON::MaybeXS 'encode_json';
 use JSON::Validator::Schema::OpenAPIv3;
 use Test::More;
 
@@ -116,7 +117,7 @@ sub test {
     delete $mutated{$_} for grep { !defined $mutated{$_}{valid} } keys %mutated;
     $mutated{$_}{value} = $mutated{$_}{name} for grep { !$mutated{$_}{valid} } keys %mutated;
     $mutated{$_} = $mutated{$_}{value} for keys %mutated;
-    is_deeply \%mutated, $exp, sprintf '%s %s', $path, Mojo::JSON::to_json($exp);
+    is_deeply \%mutated, $exp, sprintf '%s %s', $path, encode_json($exp);
   }
 }
 

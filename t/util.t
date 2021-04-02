@@ -1,5 +1,5 @@
 use Mojo::Base -strict;
-use Mojo::JSON 'false';
+use JSON::MaybeXS 'JSON';
 use Mojo::Util 'md5_sum';
 use JSON::Validator;
 use JSON::Validator::Util
@@ -14,7 +14,7 @@ is data_type(4.2),      'number', 'data_type number';
 is data_type(42, [{type => 'integer'}]), 'integer', 'data_type integer';
 is data_type([]), 'array', 'data_type array';
 is data_type(bless {}, 'other'), 'other', 'data_type other';
-is data_type(false), 'boolean', 'data_type boolean';
+is data_type(JSON->false), 'boolean', 'data_type boolean';
 is data_type(undef), 'null', 'data_type null';
 is data_type($e), 'JSON::Validator::Error', 'data_type JSON::Validator::Error';
 
@@ -26,7 +26,7 @@ ok is_type([],    'ARRAY'),           'is_type ARRAY';
 ok is_type({},    'HASH'),            'is_type HASH';
 ok is_type(4.2,   'NUM'),             'is_type 4.2';
 ok is_type(42,    'NUM'),             'is_type 42';
-ok is_type(false, 'BOOL'),            'is_type BOOL';
+ok is_type(JSON->false, 'BOOL'),      'is_type BOOL';
 ok !is_type('2',  'NUM'),             'is_type 2';
 ok !is_type(0,    'BOOL'),            'is_type BOOL';
 

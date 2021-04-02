@@ -1,10 +1,10 @@
 use Mojo::Base -strict;
 use JSON::Validator;
-use Mojo::JSON 'false';
+use JSON::MaybeXS 'JSON';
 use Test::More;
 
 my $jv     = JSON::Validator->new->schema('data://main/spec.json');
-my @errors = $jv->validate({prop1 => false, prop2 => false});
+my @errors = $jv->validate({prop1 => JSON->false, prop2 => JSON->false});
 is "@errors", '', 'oneof blessed booleans';
 
 done_testing;

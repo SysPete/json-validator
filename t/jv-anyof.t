@@ -1,6 +1,8 @@
 use lib '.';
 use t::Helper;
 
+use JSON::MaybeXS 'JSON';
+
 my $schema = {anyOf => [{type => "string", maxLength => 5}, {type => "number", minimum => 0}]};
 
 validate_ok 'short', $schema;
@@ -27,7 +29,7 @@ validate_ok(
             type        => 'array',
             items       => {'$ref' => '#/definitions/simpleTypes'},
             minItems    => 1,
-            uniqueItems => Mojo::JSON::true,
+            uniqueItems => JSON->true,
           }
         ]
       },
@@ -60,7 +62,7 @@ validate_ok(
 
 validate_ok 'hello', {type => ['integer', 'string'], enum => [123, 'HELLO']}, E('/', 'Not in enum list: 123, HELLO.');
 
-validate_ok 'hello', {anyOf => [false, {type => ['integer', 'boolean']}]}, E('/', '/anyOf/0 Should not match.'),
+validate_ok 'hello', {anyOf => [JSON->false, {type => ['integer', 'boolean']}]}, E('/', '/anyOf/0 Should not match.'),
   E('/', '/anyOf/1 Expected integer/boolean - got string.');
 
 validate_ok 'hello', {type => ['integer', 'boolean']}, E('/', 'Expected integer/boolean - got string.');

@@ -1,13 +1,13 @@
 use Mojo::Base -strict;
 use Test::More;
 use JSON::Validator::Ref;
-use Mojo::JSON qw(false true);
+use JSON::MaybeXS 'JSON';
 
 test('without fqn', {foo => 42}, '#bar',  undef);
 test('with fqn',    {foo => 42}, '#/bar', 'https://example.com#/bar');
-test('false', false, '#/false');
-test('true',  false, '#/true');
-test('ref hash', false, {'$ref' => '#/true'});
+test('false', JSON->false, '#/false');
+test('true',  JSON->false, '#/true');
+test('ref hash', JSON->false, {'$ref' => '#/true'});
 
 test(
   'ref siblings',

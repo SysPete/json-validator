@@ -1,10 +1,11 @@
 use Mojo::Base -strict;
 use JSON::Validator;
-use Mojo::JSON 'to_json';
+use JSON::MaybeXS 'JSON';
 use Test::More;
 
-my $jv     = JSON::Validator->new;
-my %coerce = (booleans => 1);
+my $encoder = JSON->new->utf8->allow_nonref;
+my $jv      = JSON::Validator->new;
+my %coerce  = (booleans => 1);
 is_deeply($jv->coerce(%coerce)->coerce,  {booleans => 1}, 'hash is accepted');
 is_deeply($jv->coerce(\%coerce)->coerce, {booleans => 1}, 'hash reference is accepted');
 
@@ -15,15 +16,15 @@ for my $i (@items) {
   for my $schema (schemas($i->[0])) {
     my $x = $i->[1];
     $jv->validate($x, $schema);
-    is to_json($x), $i->[1], sprintf 'no quotes around %s %s', $i->[0], to_json($schema);
+    is $encoder->allow_nonref->encode($x), $i->[1], sprintf 'no quotes around %s %s', $i->[0], $encoder->encode($schema);
 
     $x = {v => $i->[1]};
     $jv->validate($x, {type => 'object', properties => {v => $schema}});
-    is to_json($x->{v}), $i->[1], sprintf 'no quotes around %s %s', $i->[0], to_json($schema);
+    is $encoder->encode($x->{v}), $i->[1], sprintf 'no quotes around %s %s', $i->[0], $encoder->encode($schema);
 
     $x = [$i->[1]];
     $jv->validate($x, {type => 'array', items => $schema});
-    is to_json($x->[0]), $i->[1], sprintf 'no quotes around %s %s', $i->[0], to_json($schema);
+    is $encoder->encode($x->[0]), $i->[1], sprintf 'no quotes around %s %s', $i->[0], $encoder->encode($schema);
   }
 }
 

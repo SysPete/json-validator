@@ -7,7 +7,7 @@ use Exporter 'import';
 use JSON::Validator::Error;
 use List::Util;
 use Mojo::Collection;
-use Mojo::JSON;
+use JSON::MaybeXS ();
 use Mojo::Loader;
 use Mojo::Util;
 use Scalar::Util 'blessed';
@@ -50,7 +50,7 @@ sub data_section {
 
   return undef unless $params->{confess};
 
-  my $err = Mojo::JSON::encode_json([map { @$_ == 1 ? $_->[0] : $_ } @classes]);
+  my $err = JSON::MaybeXS::encode_json([map { @$_ == 1 ? $_->[0] : $_ } @classes]);
   Carp::confess(qq(Could not find "$file" in __DATA__ section of $err.));
 }
 

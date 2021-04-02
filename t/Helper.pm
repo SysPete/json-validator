@@ -3,11 +3,13 @@ use Mojo::Base -base;
 
 use JSON::Validator;
 use Mojo::File;
-use Mojo::JSON qw(decode_json encode_json);
+use JSON::MaybeXS 'JSON';
 use Mojo::Util qw(monkey_patch);
 use Test::More;
 
 $ENV{TEST_VALIDATOR_CLASS} = 'JSON::Validator';
+
+my $encoder = JSON->new->utf8->allow_nonref->canonical->convert_blessed;
 
 sub acceptance {
   my ($class, $schema_class, %acceptance_params) = @_;
@@ -38,8 +40,8 @@ sub acceptance {
       my @errors = $schema->validate($data_d);
 
       # Doing internal tests on mutation, since I think Test::JSON::Schema::Acceptance is a bit too strict
-      Test2::Tools::Compare::is(encode_json($data_d),   encode_json($data_p->data),   'data structure is the same');
-      Test2::Tools::Compare::is(encode_json($schema_d), encode_json($schema_p->data), 'schema structure is the same')
+      Test2::Tools::Compare::is($encoder->encode($data_d),   $encoder->encode($data_p->data),   'data structure is the same');
+      Test2::Tools::Compare::is($encoder->encode($schema_d), $encoder->encode($schema_p->data), 'schema structure is the same')
         unless _skip_schema_is($schema_p);
 
       return @errors ? 0 : 1;
@@ -48,20 +50,20 @@ sub acceptance {
 }
 
 sub clone {
-  return decode_json(encode_json($_[0]));
+  return $encoder->decode($encoder->encode($_[0]));
 }
 
 sub edj {
-  return Mojo::JSON::decode_json(Mojo::JSON::encode_json(@_));
+  return $encoder->decode($encoder->encode(@_));
 }
 
 sub joi_ok {
   my ($data, $joi, @expected) = @_;
-  my $description ||= @expected ? "errors: @expected" : "valid: " . encode_json($data);
+  my $description ||= @expected ? "errors: @expected" : "valid: " . $encoder->encode($data);
   my @errors = JSON::Validator::Joi->new($joi)->validate($data);
   Test::More::is_deeply([map { $_->TO_JSON } sort { $a->path cmp $b->path } @errors],
     [map { $_->TO_JSON } sort { $a->path cmp $b->path } @expected], $description)
-    or Test::More::diag(encode_json(\@errors));
+    or Test::More::diag($encoder->encode(\@errors));
 }
 
 sub jv { state $obj = $ENV{TEST_VALIDATOR_CLASS}->new }
@@ -70,13 +72,13 @@ sub schema { state $schema; $schema = $_[1] if $_[1]; $schema }
 
 sub schema_validate_ok {
   my ($data, $schema, @expected) = @_;
-  my $description = @expected ? "errors: @expected" : "valid: " . encode_json($data);
+  my $description = @expected ? "errors: @expected" : "valid: " . $encoder->allow_nonref->encode($data);
 
   my @errors = t::Helper->schema->resolve($schema)->validate($data);
   local $Test::Builder::Level = $Test::Builder::Level + 1;
   Test::More::is_deeply([map { $_->TO_JSON } sort { $a->path cmp $b->path } @errors],
     [map { $_->TO_JSON } sort { $a->path cmp $b->path } @expected], $description)
-    or Test::More::diag(encode_json(\@errors));
+    or Test::More::diag($encoder->encode(\@errors));
 }
 
 sub test {
@@ -89,12 +91,12 @@ sub test {
 
 sub validate_ok {
   my ($data, $schema, @expected) = @_;
-  my $description = @expected ? "errors: @expected" : "valid: " . encode_json($data);
+  my $description = @expected ? "errors: @expected" : "valid: " . $encoder->allow_nonref->encode($data);
   my @errors      = jv()->schema($schema)->validate($data);
   local $Test::Builder::Level = $Test::Builder::Level + 1;
   Test::More::is_deeply([map { $_->TO_JSON } sort { $a->path cmp $b->path } @errors],
     [map { $_->TO_JSON } sort { $a->path cmp $b->path } @expected], $description)
-    or Test::More::diag(encode_json(\@errors));
+    or Test::More::diag($encoder->encode(\@errors));
 }
 
 sub import {
@@ -108,11 +110,11 @@ sub import {
   monkey_patch $caller => E                  => \&JSON::Validator::E;
   monkey_patch $caller => done_testing       => \&Test::More::done_testing;
   monkey_patch $caller => edj                => \&edj;
-  monkey_patch $caller => false              => \&Mojo::JSON::false;
+  monkey_patch $caller => false              => \&JSON::MaybeXS::false;
   monkey_patch $caller => joi_ok             => \&joi_ok;
   monkey_patch $caller => jv                 => \&jv;
   monkey_patch $caller => schema_validate_ok => \&schema_validate_ok;
-  monkey_patch $caller => true               => \&Mojo::JSON::true;
+  monkey_patch $caller => true               => \&JSON::MaybeXS::true;
   monkey_patch $caller => validate_ok        => \&validate_ok;
 }
 
@@ -169,7 +171,7 @@ sub _skip_schema_is {
   my @paths = ('', '/properties/foo');
 
   # The URL has been changed by _acceptance_ua()
-  return 1 if encode_json($p->data) =~ m!localhost:1234!;
+  return 1 if $encoder->encode($p->data) =~ m!localhost:1234!;
 
   # JSON::Validator always normalizes $ref with multiple keys
   for my $path (@paths) {

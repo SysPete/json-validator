@@ -3,7 +3,7 @@ use Mojo::Base -base;
 
 use Mojo::Exception;
 use Mojo::File qw(path);
-use Mojo::JSON;
+use JSON::MaybeXS;
 use Mojo::UserAgent;
 use Mojo::Util qw(url_unescape);
 use JSON::Validator::Schema;
@@ -131,7 +131,7 @@ sub _load_from_url {
 }
 
 sub _parse {
-  return Mojo::JSON::decode_json($_[0]) if $_[0] =~ m!^\s*\{!s;
+  return JSON::MaybeXS::decode_json($_[0]) if $_[0] =~ m!^\s*\{!s;
   return JSON::Validator::Util::_yaml_load($_[0]);
 }
 

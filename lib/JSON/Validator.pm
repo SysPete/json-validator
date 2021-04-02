@@ -10,7 +10,7 @@ use JSON::Validator::Store;
 use JSON::Validator::Util qw(E data_checksum data_type is_type json_pointer prefix_errors schema_type);
 use List::Util qw(uniq);
 use Mojo::File qw(path);
-use Mojo::JSON qw(false true);
+use JSON::MaybeXS 'JSON';
 use Mojo::URL;
 use Scalar::Util qw(blessed refaddr);
 
@@ -37,6 +37,8 @@ has store => sub {
   $attrs{$_} = delete $self->{$_} for grep { $self->{$_} } qw(cache_paths ua);
   return JSON::Validator::Store->new(%attrs);
 };
+
+my $encoder = JSON->new->allow_nonref;
 
 # store proxy attributes
 for my $method (qw(cache_paths ua)) {
@@ -626,7 +628,7 @@ sub _validate_type_enum {
     return if $m eq data_checksum $i;
   }
 
-  $enum = join ', ', map { (!defined or ref) ? Mojo::JSON::encode_json($_) : $_ } @$enum;
+  $enum = join ', ', map { (!defined or ref) ? $encoder->encode($_) : $_ } @$enum;
   return E $path, [enum => enum => $enum];
 }
 
@@ -635,7 +637,7 @@ sub _validate_type_const {
   my $const = $schema->{const};
 
   return if data_checksum($data) eq data_checksum($const);
-  return E $path, [const => const => Mojo::JSON::encode_json($const)];
+  return E $path, [const => const => $encoder->encode($const)];
 }
 
 sub _validate_format {
@@ -711,8 +713,8 @@ sub _validate_type_boolean {
 
   # String that looks like a boolean
   if (defined $value and $self->{coerce}{booleans}) {
-    $_[1] = false if $value =~ m!^(0|false|)$!;
-    $_[1] = true  if $value =~ m!^(1|true)$!;
+    $_[1] = JSON->false if $value =~ m!^(0|false|)$!;
+    $_[1] = JSON->true  if $value =~ m!^(1|true)$!;
   }
 
   return if is_type $_[1], 'BOOL';
@@ -934,7 +936,7 @@ L<JSON::Validator::Joi> to define the schema programmatically.
 
 L<JSON::Validator> can load JSON schemas in multiple formats: Plain perl data
 structured (as shown in L</SYNOPSIS>), JSON or YAML. The JSON parsing is done
-with L<Mojo::JSON>, while YAML files requires L<YAML::PP> or L<YAML::XS>.
+with L<JSON::MaybeXS>, while YAML files requires L<YAML::PP> or L<YAML::XS>.
 
 =head2 Resources
 

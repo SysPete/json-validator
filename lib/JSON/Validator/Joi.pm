@@ -3,7 +3,7 @@ use Mojo::Base -base;
 use Exporter 'import';
 
 use List::Util 'uniq';
-use Mojo::JSON qw(false true);
+use JSON::MaybeXS 'JSON';
 use Mojo::Util;
 use Storable 'dclone';
 
@@ -101,11 +101,11 @@ sub _compile_array {
   my $self = shift;
   my $json = {type => $self->type};
 
-  $json->{additionalItems} = false          if $self->{strict};
+  $json->{additionalItems} = JSON->false    if $self->{strict};
   $json->{items}           = $self->{items} if $self->{items};
   $json->{maxItems}        = $self->{max}   if defined $self->{max};
   $json->{minItems}        = $self->{min}   if defined $self->{min};
-  $json->{uniqueItems}     = true           if $self->{unique};
+  $json->{uniqueItems}     = JSON->true     if $self->{unique};
 
   return $json;
 }
@@ -132,7 +132,7 @@ sub _compile_object {
   my $self = shift;
   my $json = {type => $self->type};
 
-  $json->{additionalProperties} = false               if $self->{strict};
+  $json->{additionalProperties} = JSON->false         if $self->{strict};
   $json->{maxProperties}        = $self->{max}        if defined $self->{max};
   $json->{minProperties}        = $self->{min}        if defined $self->{min};
   $json->{patternProperties}    = $self->{regex}      if $self->{regex};

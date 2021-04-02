@@ -167,7 +167,7 @@ will point to external resources. This can be useful, if you want to have a
 bunch of files locally, but hand over a single file to a client.
 
   Mojo::File->new("client.json")
-    ->spurt(Mojo::JSON::to_json($schema->bundle->data));
+    ->spurt(JSON::MaybeXS->new->allow_nonref->encode($schema->bundle->data));
 
 =head2 coerce
 

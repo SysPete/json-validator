@@ -1,6 +1,6 @@
 use lib '.';
 use Mojo::Base -strict;
-use Mojo::JSON 'encode_json';
+use JSON::MaybeXS qw(JSON encode_json);
 use t::Helper;
 
 my $simple = {type => 'array', items       => {type => 'number'}};
@@ -28,7 +28,7 @@ validate_ok [24, 'Sussex', 'Drive'], $tuple, E('/2', 'Not in enum list: Street, 
 validate_ok [10, 'Downing', 'Street'], $tuple;
 validate_ok [1600, 'Pennsylvania', 'Avenue', 'NW', 'Washington'], $tuple;
 
-$tuple->{additionalItems} = Mojo::JSON->false;
+$tuple->{additionalItems} = JSON->false;
 validate_ok [1600, 'Pennsylvania', 'Avenue', 'NW', 'Washington'], $tuple, E('/', 'Invalid number of items: 5/4.');
 
 validate_ok [1600, 'NW'], {type => 'array', contains => {type => 'string', enum => ['NW']}};
@@ -55,23 +55,23 @@ validate_ok [1, 'b', undef], $array_constant, E('/', q{Does not match const: [1,
 
 # TODO! true, false are draft 6+ only
 validate_ok [1, 'foo', 1.2], {type => 'array', items => {}};
-validate_ok [1, 'foo', 1.2], {type => 'array', items => true};
+validate_ok [1, 'foo', 1.2], {type => 'array', items => JSON->true};
 
-validate_ok [1, 'foo', 1.2], {type => 'array', items => [true, true, false]}, E('/2', 'Should not match.');
+validate_ok [1, 'foo', 1.2], {type => 'array', items => [JSON->true, JSON->true, JSON->false]}, E('/2', 'Should not match.');
 
-validate_ok [1, 'foo', 1.2], {type => 'array', items => false}, E('/0', 'Should not match.'),
+validate_ok [1, 'foo', 1.2], {type => 'array', items => JSON->false}, E('/0', 'Should not match.'),
   E('/1', 'Should not match.'), E('/2', 'Should not match.');
 
 validate_ok [1, 'foo', 1.2],
-  {definitions => {my_true_ref => true}, type => 'array', items => {'$ref' => '#/definitions/my_true_ref'}};
+  {definitions => {my_true_ref => JSON->true}, type => 'array', items => {'$ref' => '#/definitions/my_true_ref'}};
 
 validate_ok [1, 'foo', 1.2],
-  {definitions => {my_false_ref => false}, type => 'array', items => {'$ref' => '#/definitions/my_false_ref'}},
+  {definitions => {my_false_ref => JSON->false}, type => 'array', items => {'$ref' => '#/definitions/my_false_ref'}},
   E('/0', 'Should not match.'), E('/1', 'Should not match.'), E('/2', 'Should not match.');
 
 validate_ok [1, 'foo', 1.2],
   {
-  definitions => {my_true_ref => true, my_false_ref => false},
+  definitions => {my_true_ref => JSON->true, my_false_ref => JSON->false},
   type        => 'array',
   items       => [
     {'$ref' => '#/definitions/my_true_ref'},
@@ -86,11 +86,11 @@ validate_ok [], {type => 'array', contains => {const => 'foo'}}, E('/', 'No item
 validate_ok [1], {contains => {const => 'foo'}}, E('/0', 'Does not match const: "foo".');
 
 validate_ok [1], {items => {not => {}}}, E('/0', 'Should not match.');
-validate_ok [1], {items => false}, E('/0', 'Should not match.');
+validate_ok [1], {items => JSON->false}, E('/0', 'Should not match.');
 
 validate_ok [1, 2], {contains => {not => {}}}, E('/0', 'Should not match.'), E('/1', 'Should not match.');
 
-validate_ok [1, 2], {contains => false}, E('/0', 'Should not match.'), E('/1', 'Should not match.');
+validate_ok [1, 2], {contains => JSON->false}, E('/0', 'Should not match.'), E('/1', 'Should not match.');
 
 validate_ok [1, 'hello'], {contains => {const => 1}, items => {type => 'number'}},
   E('/1', 'Expected number - got string.');

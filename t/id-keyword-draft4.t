@@ -1,6 +1,6 @@
 use Mojo::Base -strict;
 use JSON::Validator;
-use Mojo::JSON 'encode_json';
+use JSON::MaybeXS 'encode_json';
 use Test::Mojo;
 use Test::More;
 

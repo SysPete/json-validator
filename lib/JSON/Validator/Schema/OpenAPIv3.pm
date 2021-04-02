@@ -3,7 +3,7 @@ use Mojo::Base 'JSON::Validator::Schema::Draft201909';
 
 use JSON::Validator::Schema::OpenAPIv2;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
-use Mojo::JSON qw(false true);
+use JSON::MaybeXS 'JSON';
 use Mojo::Path;
 use Mojo::Util qw(monkey_patch);
 
@@ -123,7 +123,7 @@ sub _coerce_parameter_format {
 sub _coerce_parameter_style_array {
   my ($self, $val, $param) = @_;
   my $style   = $param->{style};
-  my $explode = $param->{explode} // $param->{style} eq 'form' ? true : false;
+  my $explode = $param->{explode} // $param->{style} eq 'form' ? JSON->true : JSON->false;
   my $re;
 
   if ($style =~ m!^(form|pipeDelimited|spaceDelimited|simple)$!) {

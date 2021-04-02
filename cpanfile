@@ -3,6 +3,7 @@
 # vim: ft=perl
 
 requires 'Digest::SHA';
+requires 'JSON::MaybeXS';
 
 suggests 'Data::Validate::Domain';
 suggests 'Data::Validate::IP';
