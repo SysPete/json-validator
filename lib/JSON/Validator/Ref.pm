@@ -1,5 +1,8 @@
 package JSON::Validator::Ref;
-use Mojo::Base -strict;
+
+use warnings;
+use strict;
+
 use Tie::Hash ();
 use base 'Tie::StdHash';
 
