@@ -5,6 +5,7 @@
 requires 'Digest::MD5';
 requires 'Digest::SHA';
 requires 'JSON::MaybeXS';
+requires 'JSON::Pointer';
 requires 'Moo' => '2.000000';
 requires 'namespace::clean';
 
@@ -15,5 +16,6 @@ suggests 'Net::IDN::Encode';
 
 on 'test' => sub {
   suggests 'Test::JSON::Schema::Acceptance';
+  suggests 'Test2::Tools::Compare';
   suggests 'YAML::PP';
 };

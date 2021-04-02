@@ -1,15 +1,16 @@
 package t::Helper;
 use Mojo::Base -base;
 
+use JSON::MaybeXS 'JSON';
+use JSON::Pointer;
 use JSON::Validator;
 use Mojo::File;
-use JSON::MaybeXS 'JSON';
 use Mojo::Util qw(monkey_patch);
 use Test::More;
 
 $ENV{TEST_VALIDATOR_CLASS} = 'JSON::Validator';
 
-my $encoder = JSON->new->utf8->allow_nonref->canonical->convert_blessed;
+my $encoder = JSON->new->utf8->allow_blessed->allow_nonref->canonical->convert_blessed;
 
 sub acceptance {
   my ($class, $schema_class, %acceptance_params) = @_;
@@ -31,8 +32,11 @@ sub acceptance {
     tests => $test->(split '/', $ENV{TEST_ACCEPTANCE} || ''),
     %acceptance_params,
     validate_data => sub {
-      my ($schema_p, $data_p) = map { Mojo::JSON::Pointer->new(shift @_) } qw(schema data);
-      my ($schema_d, $data_d) = map { clone($_->data) } $schema_p, $data_p;
+      # original data for comparison
+      my ($schema_p, $data_p) = @_;
+
+      # args passed to validator can be mutated, so clone original args
+      my ($schema_d, $data_d) = map { clone($_) } ($schema_p, $data_p);
 
       my $schema = $schema_class->new($schema_d, ua => $ua);
       return 0 if @{$schema->errors};
@@ -40,8 +44,8 @@ sub acceptance {
       my @errors = $schema->validate($data_d);
 
       # Doing internal tests on mutation, since I think Test::JSON::Schema::Acceptance is a bit too strict
-      Test2::Tools::Compare::is($encoder->encode($data_d),   $encoder->encode($data_p->data),   'data structure is the same');
-      Test2::Tools::Compare::is($encoder->encode($schema_d), $encoder->encode($schema_p->data), 'schema structure is the same')
+      Test2::Tools::Compare::is($encoder->encode($data_d),   $encoder->encode($data_p),   'data structure is the same');
+      Test2::Tools::Compare::is($encoder->encode($schema_d), $encoder->encode($schema_p), 'schema structure is the same')
         unless _skip_schema_is($schema_p);
 
       return @errors ? 0 : 1;
@@ -72,7 +76,7 @@ sub schema { state $schema; $schema = $_[1] if $_[1]; $schema }
 
 sub schema_validate_ok {
   my ($data, $schema, @expected) = @_;
-  my $description = @expected ? "errors: @expected" : "valid: " . $encoder->allow_nonref->encode($data);
+  my $description = @expected ? "errors: @expected" : "valid: " . $encoder->encode($data);
 
   my @errors = t::Helper->schema->resolve($schema)->validate($data);
   local $Test::Builder::Level = $Test::Builder::Level + 1;
@@ -91,7 +95,7 @@ sub test {
 
 sub validate_ok {
   my ($data, $schema, @expected) = @_;
-  my $description = @expected ? "errors: @expected" : "valid: " . $encoder->allow_nonref->encode($data);
+  my $description = @expected ? "errors: @expected" : "valid: " . $encoder->encode($data);
   my @errors      = jv()->schema($schema)->validate($data);
   local $Test::Builder::Level = $Test::Builder::Level + 1;
   Test::More::is_deeply([map { $_->TO_JSON } sort { $a->path cmp $b->path } @errors],
@@ -167,15 +171,15 @@ sub _acceptance_ua {
 }
 
 sub _skip_schema_is {
-  my $p     = shift;
+  my $data  = shift;
   my @paths = ('', '/properties/foo');
 
   # The URL has been changed by _acceptance_ua()
-  return 1 if $encoder->encode($p->data) =~ m!localhost:1234!;
+  return 1 if $encoder->encode($data) =~ m!localhost:1234!;
 
   # JSON::Validator always normalizes $ref with multiple keys
   for my $path (@paths) {
-    my $ref = $p->get($path);
+    my $ref = JSON::Pointer->get($data, $path);
     return 1 if ref $ref eq 'HASH' && $ref->{'$ref'} && 1 != keys %$ref;
   }
 

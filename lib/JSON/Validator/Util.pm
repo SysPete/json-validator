@@ -5,10 +5,10 @@ use B;
 use Carp ();
 use Digest::MD5 'md5_hex';
 use Exporter 'import';
+use JSON::MaybeXS ();
 use JSON::Validator::Error;
 use List::Util;
 use Mojo::Collection;
-use JSON::MaybeXS ();
 use Mojo::Loader;
 use Mojo::Util;
 use Scalar::Util 'blessed';
@@ -337,12 +337,12 @@ C<$json_pointer> matches some data, and will pass in the C<$json_pointer> at
 that place.
 
 In addition, if the C<$json_pointer> points to a L<JSON::Validator::Ref> at any
-point, the "$ref" will be followed, while if you used L<Mojo::JSON::Pointer>,
+point, the "$ref" will be followed, while if you used L<JSON::Pointer>,
 it would return either the L<JSON::Validator::Ref> or C<undef()>.
 
 Even though L</schema_extract> has special capabilities for handling a
 JSON-Schema, it can be used for any data-structure, just like
-L<Mojo::JSON::Pointer>.
+L<JSON::Pointer>.
 
 =head2 schema_type
 

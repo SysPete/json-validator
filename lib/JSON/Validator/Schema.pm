@@ -2,8 +2,8 @@ package JSON::Validator::Schema;
 use Mojo::Base 'JSON::Validator';    # TODO: Change this to "use Mojo::Base -base"
 
 use Carp 'carp';
+use JSON::Pointer;
 use JSON::Validator::Util qw(E is_type);
-use Mojo::JSON::Pointer;
 
 has errors => sub {
   my $self      = shift;
@@ -36,8 +36,7 @@ sub bundle {
 }
 
 sub contains {
-  state $p = Mojo::JSON::Pointer->new;
-  return $p->data(shift->{data})->contains(@_);
+  return JSON::Pointer->contains(shift->{data}, @_);
 }
 
 sub data {
@@ -49,8 +48,7 @@ sub data {
 }
 
 sub get {
-  state $p = Mojo::JSON::Pointer->new;
-  return $p->data(shift->{data})->get(@_) if @_ == 2 and ref $_[1] ne 'ARRAY';
+  return JSON::Pointer->get(shift->{data}, @_) if @_ == 2 and ref $_[1] ne 'ARRAY';
   return JSON::Validator::Util::schema_extract(shift->data, @_);
 }
 
@@ -189,7 +187,7 @@ data-structure of the validated data: Example:
 
 =head2 contains
 
-See L<Mojo::JSON::Pointer/contains>.
+See L<JSON::Pointer/contains>.
 
 =head2 data
 
@@ -206,7 +204,7 @@ use L</resolve> instead of L</data>.
   my $data = $schema->get($json_pointer);
   my $data = $schema->get($json_pointer, sub { my ($data, $json_pointer) = @_; });
 
-Called with one argument, this method acts like L<Mojo::JSON::Pointer/get>,
+Called with one argument, this method acts like L<JSON::Pointer/get>,
 while if called with two arguments it will work like
 L<JSON::Validator::Util/schema_extract> instead:
 
@@ -214,7 +212,7 @@ L<JSON::Validator::Util/schema_extract> instead:
 
 The second argument can be C<undef()>, if you don't care about the callback.
 
-See L<Mojo::JSON::Pointer/get>.
+See L<JSON::Pointer/get>.
 
 =head2 load_and_validate_schema
 

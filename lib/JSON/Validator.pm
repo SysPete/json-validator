@@ -4,6 +4,7 @@ use Exporter 'import';
 
 use Carp qw(confess);
 use Digest::SHA qw(sha1_hex);
+use JSON::Pointer;
 use JSON::Validator::Formats;
 use JSON::Validator::Ref;
 use JSON::Validator::Store;
@@ -387,7 +388,7 @@ sub _resolve_ref {
   $other //= $schema;
 
   if (defined $pointer and $pointer =~ m!^/!) {
-    $other = Mojo::JSON::Pointer->new($other)->get($pointer);
+    $other = JSON::Pointer->get($other, $pointer);
     confess qq[Possibly a typo in schema? Could not find "$pointer" in "$fqn" ($ref_url)] unless defined $other;
   }
 
