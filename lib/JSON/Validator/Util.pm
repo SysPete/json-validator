@@ -3,6 +3,7 @@ use Mojo::Base -strict;
 
 use B;
 use Carp ();
+use Digest::MD5 'md5_hex';
 use Exporter 'import';
 use JSON::Validator::Error;
 use List::Util;
@@ -24,7 +25,7 @@ sub E { JSON::Validator::Error->new(@_) }
 my $serializer = SEREAL_SUPPORT ? \&_sereal_encode : \&_yaml_dump;
 
 sub data_checksum {
-  return Mojo::Util::md5_sum(ref $_[0] ? $serializer->($_[0]) : defined $_[0] ? qq('$_[0]') : 'undef');
+  return md5_hex(ref $_[0] ? $serializer->($_[0]) : defined $_[0] ? qq('$_[0]') : 'undef');
 }
 
 sub data_section {

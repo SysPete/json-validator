@@ -5,7 +5,7 @@ BEGIN {
   };
 }
 
-use Mojo::Util 'md5_sum';
+use Digest::MD5 'md5_hex';
 use JSON::Validator;
 use JSON::Validator::Util qw(data_checksum);
 use Test::More;
@@ -24,7 +24,7 @@ is data_checksum($d_hash),    data_checksum($d_hash2),  'data_checksum hash fiel
 isnt data_checksum($d_hash),  data_checksum($d_undef),  'data_checksum hash not undef';
 isnt data_checksum($d_hash),  data_checksum($d_obj),    'data_checksum hash not object';
 isnt data_checksum($d_obj),   data_checksum($d_undef),  'data_checksum object not undef';
-isnt data_checksum(3.14), md5_sum(3.15),         'data_checksum numeric';
+isnt data_checksum(3.14), md5_hex(3.15),         'data_checksum numeric';
 is data_checksum(3.14),   data_checksum('3.14'), 'data_checksum numeric like string';
 
 done_testing;

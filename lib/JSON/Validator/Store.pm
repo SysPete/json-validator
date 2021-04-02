@@ -1,6 +1,7 @@
 package JSON::Validator::Store;
 use Mojo::Base -base;
 
+use Digest::MD5 'md5_hex';
 use Mojo::Exception;
 use Mojo::File qw(path);
 use JSON::MaybeXS;
@@ -98,7 +99,7 @@ sub _load_from_text {
   my $is_scalar_ref = ref $text eq 'SCALAR';
   return undef unless $is_scalar_ref or $text =~ m!^\s*(?:---|\{)!s;
 
-  my $id = sprintf 'urn:text:%s', Mojo::Util::md5_sum($is_scalar_ref ? $$text : $text);
+  my $id = sprintf 'urn:text:%s', md5_hex($is_scalar_ref ? $$text : $text);
   return $self->exists($id) || $self->add($id => _parse($is_scalar_ref ? $$text : $text));
 }
 
@@ -112,7 +113,7 @@ sub _load_from_url {
   return $id if $id = $self->exists($url);
 
   my $cache_path = $self->cache_paths->[0];
-  my $cache_file = Mojo::Util::md5_sum("$url");
+  my $cache_file = md5_hex("$url");
   for (@{$self->cache_paths}) {
     my $path = path $_, $cache_file;
     return $self->add($url => _parse($path->slurp)) if -r $path;

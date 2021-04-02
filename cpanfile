@@ -2,6 +2,7 @@
 
 # vim: ft=perl
 
+requires 'Digest::MD5';
 requires 'Digest::SHA';
 requires 'JSON::MaybeXS';
 requires 'Moo' => '2.000000';
@@ -9,6 +10,7 @@ requires 'namespace::clean';
 
 suggests 'Data::Validate::Domain';
 suggests 'Data::Validate::IP';
+suggests 'Sereal' => '4.00';
 suggests 'Net::IDN::Encode';
 
 on 'test' => sub {
