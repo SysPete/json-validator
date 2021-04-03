@@ -6,9 +6,9 @@ use Mojo::Exception;
 use Mojo::File qw(path);
 use JSON::MaybeXS;
 use Mojo::UserAgent;
-use Mojo::Util qw(url_unescape);
 use JSON::Validator::Schema;
 use JSON::Validator::Util qw(data_section);
+use URI::Escape qw(uri_unescape);
 
 use constant BUNDLED_PATH  => path(path(__FILE__)->dirname, 'cache')->to_string;
 use constant CASE_TOLERANT => File::Spec->case_tolerant;
@@ -86,7 +86,7 @@ sub _load_from_file {
 
   $file =~ s!^file://!!;
   $file =~ s!#$!!;
-  $file = path(split '/', url_unescape $file);
+  $file = path(split '/', uri_unescape($file));
   return undef unless -e $file;
 
   $file = $file->realpath;
