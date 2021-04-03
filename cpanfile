@@ -8,6 +8,8 @@ requires 'JSON::MaybeXS';
 requires 'JSON::Pointer';
 requires 'Moo' => '2.000000';
 requires 'namespace::clean';
+requires 'Path::Tiny';
+requires 'Sub::Install';
 
 suggests 'Data::Validate::Domain';
 suggests 'Data::Validate::IP';

@@ -4,16 +4,16 @@ use Exporter 'import';
 
 use Carp qw(confess);
 use Digest::SHA qw(sha1_hex);
+use JSON::MaybeXS 'JSON';
 use JSON::Pointer;
 use JSON::Validator::Formats;
 use JSON::Validator::Ref;
 use JSON::Validator::Store;
 use JSON::Validator::Util qw(E data_checksum data_type is_type json_pointer prefix_errors schema_type);
 use List::Util qw(uniq);
-use Mojo::File qw(path);
-use JSON::MaybeXS 'JSON';
-use Mojo::URL;
+use Path::Tiny;
 use Scalar::Util qw(blessed refaddr);
+use Sub::Install;
 
 use constant RECURSION_LIMIT => $ENV{JSON_VALIDATOR_RECURSION_LIMIT} || 100;
 
@@ -41,9 +41,13 @@ has store => sub {
 
 my $encoder = JSON->new->allow_nonref;
 
-# store proxy attributes
 for my $method (qw(cache_paths ua)) {
-  Mojo::Util::monkey_patch(__PACKAGE__, $method => sub { shift->store->$method(@_) });
+  Sub::Install::install_sub(
+    {
+      code => sub { shift->store->$method(@_) },
+      as   => $method,
+    }
+  );
 }
 
 sub bundle {
@@ -422,9 +426,15 @@ sub _schema_class {
     $jv_class =~ m!^JSON::Validator::(.+)! ? $1 : $jv_class;
   return $package if $package->can('new');
 
-  die "package $package: $@" unless eval "package $package; use Mojo::Base '$jv_class'; 1";
-  Mojo::Util::monkey_patch($package, $_ => JSON::Validator::Schema->can($_))
-    for qw(_register_root_schema bundle contains data errors get id new resolve specification validate);
+  die "package $package: $@" unless eval "package $package; use base '$jv_class'; 1";
+  require Sub::Install;
+  Sub::Install::install_sub(
+    {
+      code => JSON::Validator::Schema->can($_),
+      into => $package,
+      as => $_,
+    }
+  ) for qw(_register_root_schema bundle contains data errors get id new resolve specification validate);;
   return $package;
 }
 
