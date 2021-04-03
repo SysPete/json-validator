@@ -5,15 +5,18 @@ use JSON::Validator::Schema::OpenAPIv2;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
 use JSON::MaybeXS 'JSON';
 use Mojo::Path;
-use Mojo::Util qw(monkey_patch);
+use Sub::Install;
 
 has moniker       => 'openapiv3';
 has specification => 'https://spec.openapis.org/oas/3.0/schema/2019-04-02';
 
 # some methods are shared with OpenAPIv2
-monkey_patch __PACKAGE__,
-  $_ => JSON::Validator::Schema::OpenAPIv2->can($_)
-  for qw(coerce routes validate_request validate_response),
+Sub::Install::install_sub(
+  {
+    code => JSON::Validator::Schema::OpenAPIv2->can($_),
+    as   => $_,
+  }
+) for qw(coerce routes validate_request validate_response),
   qw(_coerce_arrays _coerce_default_value _find_all_nodes _prefix_error_path _validate_request_or_response);
 
 sub new {

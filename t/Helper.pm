@@ -5,7 +5,7 @@ use JSON::MaybeXS 'JSON';
 use JSON::Pointer;
 use JSON::Validator;
 use Mojo::File;
-use Mojo::Util qw(monkey_patch);
+use Sub::Install;
 use Test::More;
 
 $ENV{TEST_VALIDATOR_CLASS} = 'JSON::Validator';
@@ -111,15 +111,26 @@ sub import {
   $_->import for qw(strict warnings);
   feature->import(':5.10');
 
-  monkey_patch $caller => E                  => \&JSON::Validator::E;
-  monkey_patch $caller => done_testing       => \&Test::More::done_testing;
-  monkey_patch $caller => edj                => \&edj;
-  monkey_patch $caller => false              => \&JSON::MaybeXS::false;
-  monkey_patch $caller => joi_ok             => \&joi_ok;
-  monkey_patch $caller => jv                 => \&jv;
-  monkey_patch $caller => schema_validate_ok => \&schema_validate_ok;
-  monkey_patch $caller => true               => \&JSON::MaybeXS::true;
-  monkey_patch $caller => validate_ok        => \&validate_ok;
+  monkey_patch($caller => E                  => \&JSON::Validator::E);
+  monkey_patch($caller => done_testing       => \&Test::More::done_testing);
+  monkey_patch($caller => edj                => \&edj);
+  monkey_patch($caller => false              => \&JSON::MaybeXS::false);
+  monkey_patch($caller => joi_ok             => \&joi_ok);
+  monkey_patch($caller => jv                 => \&jv);
+  monkey_patch($caller => schema_validate_ok => \&schema_validate_ok);
+  monkey_patch($caller => true               => \&JSON::MaybeXS::true);
+  monkey_patch($caller => validate_ok        => \&validate_ok);
+}
+
+sub monkey_patch {
+  my ( $into, $as, $code ) = @_;
+  Sub::Install::install_sub(
+    {
+      into => $into,
+      as   => $as,
+      code => $code,
+    }
+  );
 }
 
 sub _acceptance_ua {
@@ -144,28 +155,28 @@ sub _acceptance_ua {
   $app_base_url =~ s!/$!!;
 
   my $orig_load_schema = $schema_class->can('_load_schema');
-  monkey_patch $schema_class => _load_schema => sub {
+  monkey_patch( $schema_class => _load_schema => sub {
     my ($self, $url) = @_;
     my $cached;
     return $cached, $url if $cached = $self->_store($url);
     $url =~ s!^https?://localhost:1234!$app_base_url!;
     return $self->$orig_load_schema($url);
-  };
+  });
 
   #my $orig_resolve_ref = $schema_class->can('_resolve_ref');
-  #monkey_patch $schema_class => _resolve_ref => sub {
+  #monkey_patch( $schema_class => _resolve_ref => sub {
   #  my ($self, $ref_url, $base_url, $schema) = @_;
   #  $ref_url  =~ s!^https?://localhost:1234!$app_base_url!;
   #  $base_url =~ s!^https?://localhost:1234!$app_base_url!;
   #  $self->$orig_resolve_ref($ref_url, $base_url, $schema);
-  #};
+  #)};
 
   #my $orig_store       = $schema_class->can('_store');
-  #monkey_patch $schema_class => _store => sub {
+  #monkey_patch( $schema_class => _store => sub {
   #  my ($self, $id, $schema) = @_;
   #  $id =~ s!^https?://localhost:1234!$app_base_url!;
   #  $self->$orig_store($id, $schema);
-  #};
+  #)};
 
   return $ua;
 }

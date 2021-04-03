@@ -1,15 +1,21 @@
 use Mojo::Base -strict;
 use JSON::Validator;
-use Mojo::Util 'monkey_patch';
 use Scalar::Util qw(refaddr);
+use Sub::Install;
 use Test::More;
 
 my ($original_validate, %ref_counts) = (\&JSON::Validator::_validate);
-monkey_patch 'JSON::Validator', _validate => sub {
-  my ($self, $data, $path, $schema) = @_;
-  $ref_counts{refaddr($data)}++ if ref $data;
-  goto &$original_validate;
-};
+Sub::Install::install_sub(
+  {
+    code =>  sub {
+      my ($self, $data, $path, $schema) = @_;
+      $ref_counts{refaddr($data)}++ if ref $data;
+      goto &$original_validate;
+    },
+    as => '_validate',
+    into => 'JSON::Validator',
+  }
+);
 
 for ([1, 1], [0, 3]) {
   my ($enabled, $exp_ref_counts) = @$_;

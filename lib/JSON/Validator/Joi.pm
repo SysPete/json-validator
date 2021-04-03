@@ -4,8 +4,8 @@ use Exporter 'import';
 
 use List::Util 'uniq';
 use JSON::MaybeXS 'JSON';
-use Mojo::Util;
 use Storable 'dclone';
+use Sub::Install;
 
 our @EXPORT_OK = qw(joi);
 
@@ -18,7 +18,12 @@ has type                                   => 'object';
 has validator                              => sub { JSON::Validator->new->coerce('booleans,numbers,strings') };
 
 for my $attr (qw(required strict unique)) {
-  Mojo::Util::monkey_patch(__PACKAGE__, $attr => sub { $_[0]->{$attr} = $_[1] // 1; $_[0]; });
+  Sub::Install::install_sub(
+    {
+      code => sub { $_[0]->{$attr} = $_[1] // 1; $_[0]; },
+      as   => $attr,
+    }
+  );
 }
 
 sub alphanum { shift->_type('string')->regex('^\w*$') }
