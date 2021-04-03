@@ -1,5 +1,4 @@
 package JSON::Validator::Store;
-use Mojo::Base -base;
 
 use Digest::MD5 'md5_hex';
 use Mojo::Exception;
@@ -13,16 +12,31 @@ use URI::Escape qw(uri_unescape);
 use constant BUNDLED_PATH  => path(path(__FILE__)->dirname, 'cache')->to_string;
 use constant CASE_TOLERANT => File::Spec->case_tolerant;
 
-die $@ unless eval q(package JSON::Validator::Exception; use Mojo::Base 'Mojo::Exception'; 1);
+use Moo;
+with 'StackTrace::Auto';
 
-has cache_paths => sub { [split(/:/, $ENV{JSON_VALIDATOR_CACHE_PATH} || ''), BUNDLED_PATH] };
-has schemas     => sub { +{} };
+has cache_paths => (
+  is      => 'rw',
+  lazy    => 1,
+  default => sub {
+    return [split(/:/, $ENV{JSON_VALIDATOR_CACHE_PATH} || ''), BUNDLED_PATH];
+  },
+);
 
-has ua => sub {
-  my $ua = Mojo::UserAgent->new;
-  $ua->proxy->detect;
-  return $ua->max_redirects(3);
-};
+has schemas => (
+  is      => 'rw',
+  default => sub { +{} },
+);
+
+has ua => (
+  is      => 'rw',
+  lazy    => 1,
+  default => sub {
+    my $ua = Mojo::UserAgent->new;
+    $ua->proxy->detect;
+    return $ua->max_redirects(3);
+  },
+);
 
 sub add {
   my ($self, $id, $schema) = @_;
@@ -53,7 +67,7 @@ sub load {
     || $_[0]->_load_from_file($_[1])
     || $_[0]->_load_from_app($_[1])
     || $_[0]->get($_[1])
-    || _raise("Unable to load schema $_[1]");
+    || $_[0]->_raise("Unable to load schema $_[1]");
 }
 
 sub _load_from_app {
@@ -65,7 +79,7 @@ sub _load_from_app {
 
   my $tx  = $self->ua->get($url);
   my $err = $tx->error && $tx->error->{message};
-  _raise($err) if $err;
+  $self->_raise($err) if $err;
   return $self->add($url => _parse($tx->res->body));
 }
 
@@ -77,7 +91,7 @@ sub _load_from_data {
 
   my ($class, $file) = ($1, $2);    # data://([^/]*)/(.*)
   my $text = data_section $class, $file, {encoding => 'UTF-8'};
-  _raise("Could not find $url") unless $text;
+  $self->_raise("Could not find $url") unless $text;
   return $self->add($url => _parse($text));
 }
 
@@ -121,7 +135,7 @@ sub _load_from_url {
 
   my $tx  = $self->ua->get($url);
   my $err = $tx->error && $tx->error->{message};
-  _raise($err) if $err;
+  $self->_raise($err) if $err;
 
   if ($cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path) {
     $cache_file = path $cache_path, $cache_file;
@@ -136,7 +150,7 @@ sub _parse {
   return JSON::Validator::Util::_yaml_load($_[0]);
 }
 
-sub _raise { die JSON::Validator::Exception->new(@_)->trace }
+sub _raise { my $self = shift; die @_, $self->stack_trace->as_string }
 
 1;
 
