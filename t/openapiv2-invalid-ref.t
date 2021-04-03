@@ -1,4 +1,6 @@
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use JSON::Validator::Schema::OpenAPIv2;
 use Test::Deep;
 use Test::More;

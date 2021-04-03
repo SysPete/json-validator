@@ -1,10 +1,12 @@
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use JSON::Validator::Schema::OpenAPIv3;
-use Mojo::File;
+use Path::Tiny;
 use Test::Deep;
 use Test::More;
 
-my $cwd    = Mojo::File->new(__FILE__)->dirname;
+my $cwd    = path(__FILE__)->parent;
 my $schema = JSON::Validator::Schema::OpenAPIv3->new;
 my ($body, $p, @errors);
 

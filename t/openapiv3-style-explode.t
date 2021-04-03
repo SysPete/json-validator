@@ -1,4 +1,6 @@
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use JSON::MaybeXS 'encode_json';
 use JSON::Validator::Schema::OpenAPIv3;
 use Test::More;

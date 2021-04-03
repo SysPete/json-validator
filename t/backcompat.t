@@ -2,7 +2,7 @@ use Test::More;
 use JSON::Validator;
 
 package JSON::Validator::L01;
-use Mojo::Base 'JSON::Validator';
+use base 'JSON::Validator';
 
 package main;
 my $legacy = JSON::Validator::L01->new;

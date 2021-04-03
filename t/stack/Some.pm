@@ -1,5 +1,5 @@
 package Some;
-use Mojo::Base -base;
+use Moo;
 
 sub j             { JSON::Validator->new }
 sub validate_age0 { shift->j->schema('data:///age0.json')->validate(shift) }

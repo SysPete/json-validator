@@ -1,5 +1,7 @@
 package Some::Module;
-use Mojo::Base 'Some';
+
+use Moo;
+extends 'Some';
 
 sub validate_age0 { shift->j->schema('data:///age0.json')->validate(shift) }
 sub validate_age1 { shift->j->schema('data://Some::Module/age1.json')->validate(shift) }

@@ -1,10 +1,11 @@
 package t::Helper;
-use Mojo::Base -base;
+use warnings;
+use strict;
 
 use JSON::MaybeXS 'JSON';
 use JSON::Pointer;
 use JSON::Validator;
-use Mojo::File;
+use Path::Tiny;
 use Sub::Install;
 use Test::More;
 
@@ -70,9 +71,11 @@ sub joi_ok {
     or Test::More::diag($encoder->encode(\@errors));
 }
 
-sub jv { state $obj = $ENV{TEST_VALIDATOR_CLASS}->new }
+my $jv_obj;
+sub jv { $jv_obj ||= $ENV{TEST_VALIDATOR_CLASS}->new }
 
-sub schema { state $schema; $schema = $_[1] if $_[1]; $schema }
+my $schema;
+sub schema { $schema = $_[1] if $_[1]; $schema }
 
 sub schema_validate_ok {
   my ($data, $schema, @expected) = @_;
@@ -140,7 +143,7 @@ sub _acceptance_ua {
   my $ua  = Mojo::UserAgent->new;
   my $app = Mojolicious->new;
 
-  $app->static->paths([Mojo::File->new(qw(t spec remotes))->to_string]);
+  $app->static->paths([path(qw(t spec remotes))->stringify]);
   $ua->server->app($app);
 
   $ua->on(

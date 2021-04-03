@@ -1,5 +1,7 @@
 use lib '.';
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use JSON::MaybeXS qw(JSON encode_json);
 use t::Helper;
 

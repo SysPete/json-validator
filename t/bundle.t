@@ -1,10 +1,12 @@
-use Mojo::Base -strict;
+use strict;
+use warnings;
+
 use JSON::Validator;
 use JSON::Validator::Schema::Draft7;
-use Mojo::File 'path';
+use Path::Tiny;
 use Test::More;
 
-my $workdir = path(__FILE__)->to_abs->dirname;
+my $workdir = path(__FILE__)->absolute->parent;
 my $jv      = JSON::Validator->new;
 
 subtest 'replace' => sub {
@@ -62,7 +64,7 @@ subtest 'definitions in disk spec' => sub {
     [File::Spec->updir, 'spec', 'with-deep-mixed-ref.json'],
     )
   {
-    my $file = path $workdir, 'spec', @$path;
+    my $file = path( $workdir, 'spec', @$path );
 
     my @expected = qw(age_json-SHA height unit_json-SHA weight_json-SHA);
     $expected[0] = 'age_json-type-SHA' if $path->[0] eq 'test-definitions-key.json';
@@ -75,7 +77,7 @@ subtest 'definitions in disk spec' => sub {
 };
 
 subtest 'ensure filenames with funny characters not mangled by Mojo::URL' => sub {
-  my $file3   = path $workdir, 'spec', 'space bundle.json';
+  my $file3   = path( $workdir, 'spec', 'space bundle.json' );
   my $bundled = eval { $jv->schema($file3)->bundle };
   is $@, '', 'loaded absolute filename with space';
   is $bundled->{properties}{age}{description}, 'Age in years', 'right definitions in disk spec'
@@ -98,7 +100,7 @@ subtest 'no leaking path' => sub {
   my $bundled = $jv->schema('data://main/bundled.json')->bundle({schema => $jv->get([qw(paths /withdots get)])});
   my $ref_name_prefix = $workdir;
   $ref_name_prefix =~ s![^\w-]!_!g;
-  $jv->schema(path $workdir, 'spec', 'bundle-no-leaking-filename.json');
+  $jv->schema(path( $workdir, 'spec', 'bundle-no-leaking-filename.json' ));
   my @definitions = keys %{$bundled->{definitions}};
   ok @definitions, 'definitions are present';
   is_deeply [grep { 0 == index $_, $ref_name_prefix } @definitions], [], 'no leaking of path';

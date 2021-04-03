@@ -1,4 +1,6 @@
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use JSON::Validator;
 use Mojolicious;
 use Test::More;

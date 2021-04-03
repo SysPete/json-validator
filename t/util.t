@@ -1,4 +1,6 @@
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use Digest::MD5 'md5_hex';
 use JSON::MaybeXS 'JSON';
 use JSON::Validator;

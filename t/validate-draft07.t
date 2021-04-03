@@ -1,6 +1,8 @@
-use Mojo::Base -strict;
-use Mojo::File 'path';
+use warnings;
+use strict;
+
 use JSON::MaybeXS 'decode_json';
+use Path::Tiny;
 use Test::More;
 
 use JSON::Validator;

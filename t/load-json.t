@@ -1,9 +1,11 @@
-use Mojo::Base -strict;
+use warnings;
+use strict;
+
 use JSON::Validator;
-use Mojo::File 'path';
+use Path::Tiny;
 use Test::More;
 
-my $file   = path(path(__FILE__)->dirname, 'spec', 'person.json');
+my $file   = path(__FILE__)->parent->child('spec', 'person.json');
 my $jv     = JSON::Validator->new->schema($file);
 my @errors = $jv->validate({firstName => 'yikes!'});
 
@@ -14,7 +16,7 @@ is_deeply $errors[0]->TO_JSON, {path => '/lastName', message => 'Missing propert
 
 my $spec = path($file)->slurp;
 $spec =~ s!"#!"person.json#! or die "Invalid spec: $spec";
-path("$file.2")->spurt($spec);
+path("$file.2")->spew_utf8($spec);
 ok eval { JSON::Validator->new->schema("$file.2") }, 'test issue #1 where $ref could not point to a file' or diag $@;
 unlink "$file.2";
 

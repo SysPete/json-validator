@@ -1,4 +1,6 @@
-use Mojo::Base -strict;
+use strict;
+use warnings;
+
 use JSON::Validator;
 use Scalar::Util qw(refaddr);
 use Sub::Install;

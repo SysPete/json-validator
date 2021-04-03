@@ -1,3 +1,6 @@
+use warnings;
+use strict;
+
 BEGIN {
   unshift @INC, sub {
     my $file = $_[1];
