@@ -4,13 +4,13 @@ use Mojo::Base -strict;
 use B;
 use Carp ();
 use Digest::MD5 'md5_hex';
+use Encode ();
 use Exporter 'import';
 use JSON::MaybeXS ();
 use JSON::Validator::Error;
 use List::Util;
 use Mojo::Collection;
 use Mojo::Loader;
-use Mojo::Util;
 use Scalar::Util 'blessed';
 
 use constant SEREAL_SUPPORT => !$ENV{JSON_VALIDATOR_NO_SEREAL} && eval 'use Sereal::Encoder 4.00;1';
@@ -44,7 +44,7 @@ sub data_section {
     push @$group, grep { !/$skip_re/ } do { no strict 'refs'; @{"$group->[0]\::ISA"} };
     for my $class (@$group) {
       next unless my $text = Mojo::Loader::data_section($class, $file);
-      return Mojo::Util::encode($params->{encoding}, $text) if $params->{encoding};
+      return Encode::encode($params->{encoding}, $text) if $params->{encoding};
       return $text;
     }
   }

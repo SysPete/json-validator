@@ -3,6 +3,7 @@ use Mojo::Base -base;
 use Exporter 'import';
 
 use Carp qw(confess);
+use Data::Dumper ();
 use Digest::SHA qw(sha1_hex);
 use JSON::MaybeXS 'JSON';
 use JSON::Pointer;
@@ -124,7 +125,7 @@ sub coerce {
   return $self->{coerce} ||= {} unless defined(my $what = shift);
 
   if ($what eq '1') {
-    Mojo::Util::deprecated('coerce(1) will be deprecated.');
+    warn('coerce(1) will be deprecated.');
     $what = {booleans => 1, numbers => 1, strings => 1};
   }
 
@@ -144,7 +145,7 @@ sub load_and_validate_schema {
 
   delete $self->{schema};
   my $schema_obj = $self->_new_schema($schema, %$args);
-  confess join "\n", "Invalid JSON specification", (ref $schema eq 'HASH' ? Mojo::Util::dumper($schema) : $schema),
+  confess join "\n", "Invalid JSON specification", (ref $schema eq 'HASH' ? Data::Dumper->new([$schema])->Indent(1)->Sortkeys(1)->Terse(1)->Useqq(1)->Dump : $schema),
     map {"- $_"} @{$schema_obj->errors}
     if @{$schema_obj->errors};
 

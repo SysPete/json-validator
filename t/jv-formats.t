@@ -1,6 +1,6 @@
 use lib '.';
 use t::Helper;
-use Mojo::Util 'decode';
+use Encode 'decode';
 
 my $schema = {type => 'object', properties => {v => {type => 'string'}}};
 

@@ -5,7 +5,8 @@ use Sub::Install;
 use Test::More;
 
 my ($original_validate, %ref_counts) = (\&JSON::Validator::_validate);
-Sub::Install::install_sub(
+# reinstall_sub to prevent warnings
+Sub::Install::reinstall_sub(
   {
     code =>  sub {
       my ($self, $data, $path, $schema) = @_;
