@@ -1,5 +1,6 @@
 package JSON::Validator::Util;
-use Mojo::Base -strict;
+use warnings;
+use strict;
 
 use B;
 use Carp ();
@@ -28,20 +29,20 @@ sub data_checksum {
   return md5_hex(ref $_[0] ? $serializer->($_[0]) : defined $_[0] ? qq('$_[0]') : 'undef');
 }
 
+my $data_section_skip_re = qr{(^JSON::Validator|^Mojo::Base$|^Mojolicious$|\w+::_Dynamic)};
 sub data_section {
   my ($class, $file, $params) = @_;
-  state $skip_re = qr{(^JSON::Validator|^Mojo::Base$|^Mojolicious$|\w+::_Dynamic)};
 
   my @classes = $class ? ([$class]) : ();
   unless (@classes) {
     my $i = 0;
     while ($class = caller($i++)) {
-      push @classes, [$class] unless $class =~ $skip_re;
+      push @classes, [$class] unless $class =~ $data_section_skip_re;
     }
   }
 
   for my $group (@classes) {
-    push @$group, grep { !/$skip_re/ } do { no strict 'refs'; @{"$group->[0]\::ISA"} };
+    push @$group, grep { !/$data_section_skip_re/ } do { no strict 'refs'; @{"$group->[0]\::ISA"} };
     for my $class (@$group) {
       next unless my $text = Mojo::Loader::data_section($class, $file);
       return Encode::encode($params->{encoding}, $text) if $params->{encoding};
@@ -218,9 +219,10 @@ sub _schema_extract {
   return $data;
 }
 
+my $sereal_encoder;
 sub _sereal_encode {
-  state $s = Sereal::Encoder->new({canonical => 1});
-  return $s->encode($_[0]);
+  $sereal_encoder ||= Sereal::Encoder->new({canonical => 1});
+  return $sereal_encoder->encode($_[0]);
 }
 
 BEGIN {
