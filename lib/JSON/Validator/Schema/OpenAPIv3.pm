@@ -4,7 +4,7 @@ use Mojo::Base 'JSON::Validator::Schema::Draft201909';
 use JSON::Validator::Schema::OpenAPIv2;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
 use JSON::MaybeXS 'JSON';
-use Mojo::Path;
+use JSON::Validator::Path;
 use Sub::Install;
 
 has moniker       => 'openapiv3';
@@ -209,7 +209,7 @@ sub _coerce_parameter_style_object_deep {
 
 sub _definitions_path_for_ref {
   my ($self, $ref) = @_;
-  my $path = Mojo::Path->new($ref->fqn =~ m!^.*#/(components/.+)$!)->to_dir->parts;
+  my $path = JSON::Validator::Path->new($ref->fqn =~ m!^.*#/(components/.+)$!)->to_dir->parts;
   return $path->[0] ? $path : ['definitions'];
 }
 
