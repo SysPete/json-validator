@@ -5,12 +5,12 @@ use File::Spec;
 use JSON::MaybeXS ();
 use JSON::Validator::Schema;
 use JSON::Validator::Util qw(data_section);
-use Mojo::File qw(path);
 use Mojo::URL;
 use Mojo::UserAgent;
+use Path::Tiny;
 use URI::Escape qw(uri_unescape);
 
-use constant BUNDLED_PATH  => path(path(__FILE__)->dirname, 'cache')->to_string;
+use constant BUNDLED_PATH  => path(__FILE__)->parent->child('cache')->stringify;
 use constant CASE_TOLERANT => File::Spec->case_tolerant;
 
 use Moo;
@@ -102,7 +102,7 @@ sub _load_from_file {
 
   $file =~ s!^file://!!;
   $file =~ s!#$!!;
-  $file = path(split '/', uri_unescape($file));
+  $file = path(uri_unescape($file));
   return undef unless -e $file;
 
   $file = $file->realpath;
@@ -131,7 +131,7 @@ sub _load_from_url {
   my $cache_path = $self->cache_paths->[0];
   my $cache_file = md5_hex("$url");
   for (@{$self->cache_paths}) {
-    my $path = path $_, $cache_file;
+    my $path = path( $_, $cache_file );
     return $self->add($url => $self->_parse($path->slurp)) if -r $path;
   }
 
@@ -140,7 +140,7 @@ sub _load_from_url {
   $self->_raise($err) if $err;
 
   if ($cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path) {
-    $cache_file = path $cache_path, $cache_file;
+    $cache_file = path( $cache_path, $cache_file );
     $cache_file->spurt($tx->res->body);
   }
 
