@@ -1,12 +1,13 @@
 package JSON::Validator::Store;
 
 use Digest::MD5 'md5_hex';
-use Mojo::Exception;
-use Mojo::File qw(path);
-use JSON::MaybeXS;
-use Mojo::UserAgent;
+use File::Spec;
+use JSON::MaybeXS ();
 use JSON::Validator::Schema;
 use JSON::Validator::Util qw(data_section);
+use Mojo::File qw(path);
+use Mojo::URL;
+use Mojo::UserAgent;
 use URI::Escape qw(uri_unescape);
 
 use constant BUNDLED_PATH  => path(path(__FILE__)->dirname, 'cache')->to_string;
@@ -60,39 +61,40 @@ sub get {
 }
 
 sub load {
+  my ($self, $source) = @_;
   return
-       $_[0]->_load_from_url($_[1])
-    || $_[0]->_load_from_data($_[1])
-    || $_[0]->_load_from_text($_[1])
-    || $_[0]->_load_from_file($_[1])
-    || $_[0]->_load_from_app($_[1])
-    || $_[0]->get($_[1])
-    || $_[0]->_raise("Unable to load schema $_[1]");
+       $self->_load_from_url($source)
+    || $self->_load_from_data($source)
+    || $self->_load_from_text($source)
+    || $self->_load_from_file($source)
+    || $self->_load_from_app($source)
+    || $self->get($source)
+    || $self->_raise("Unable to load schema $source");
 }
 
 sub _load_from_app {
-  return undef unless $_[1] =~ m!^/!;
-
   my ($self, $url, $id) = @_;
+
+  return undef unless $url =~ m!^/!;
   return undef unless $self->ua->server->app;
   return $id if $id = $self->exists($url);
 
   my $tx  = $self->ua->get($url);
   my $err = $tx->error && $tx->error->{message};
   $self->_raise($err) if $err;
-  return $self->add($url => _parse($tx->res->body));
+  return $self->add($url => $self->_parse($tx->res->body));
 }
 
 sub _load_from_data {
-  return undef unless $_[1] =~ m!^data://([^/]*)/(.*)!;
-
   my ($self, $url, $id) = @_;
+
+  return undef unless $url =~ m!^data://([^/]*)/(.*)!;
   return $id if $id = $self->exists($url);
 
   my ($class, $file) = ($1, $2);    # data://([^/]*)/(.*)
   my $text = data_section $class, $file, {encoding => 'UTF-8'};
   $self->_raise("Could not find $url") unless $text;
-  return $self->add($url => _parse($text));
+  return $self->add($url => $self->_parse($text));
 }
 
 sub _load_from_file {
@@ -105,7 +107,7 @@ sub _load_from_file {
 
   $file = $file->realpath;
   my $id = Mojo::URL->new->scheme('file')->host('')->path(CASE_TOLERANT ? lc $file : "$file");
-  return $self->exists($id) || $self->add($id => _parse($file->slurp));
+  return $self->exists($id) || $self->add($id => $self->_parse($file->slurp));
 }
 
 sub _load_from_text {
@@ -114,13 +116,13 @@ sub _load_from_text {
   return undef unless $is_scalar_ref or $text =~ m!^\s*(?:---|\{)!s;
 
   my $id = sprintf 'urn:text:%s', md5_hex($is_scalar_ref ? $$text : $text);
-  return $self->exists($id) || $self->add($id => _parse($is_scalar_ref ? $$text : $text));
+  return $self->exists($id) || $self->add($id => $self->_parse($is_scalar_ref ? $$text : $text));
 }
 
 sub _load_from_url {
-  return undef unless $_[1] =~ m!^https?://!;
-
   my ($self, $url, $id) = @_;
+
+  return undef unless $url =~ m!^https?://!;
   return $id if $id = $self->exists($url);
 
   $url = Mojo::URL->new($url)->fragment(undef);
@@ -130,7 +132,7 @@ sub _load_from_url {
   my $cache_file = md5_hex("$url");
   for (@{$self->cache_paths}) {
     my $path = path $_, $cache_file;
-    return $self->add($url => _parse($path->slurp)) if -r $path;
+    return $self->add($url => $self->_parse($path->slurp)) if -r $path;
   }
 
   my $tx  = $self->ua->get($url);
@@ -142,12 +144,13 @@ sub _load_from_url {
     $cache_file->spurt($tx->res->body);
   }
 
-  return $self->add($url => _parse($tx->res->body));
+  return $self->add($url => $self->_parse($tx->res->body));
 }
 
 sub _parse {
-  return JSON::MaybeXS::decode_json($_[0]) if $_[0] =~ m!^\s*\{!s;
-  return JSON::Validator::Util::_yaml_load($_[0]);
+  my ($self, $json) = @_;
+  return JSON::MaybeXS::decode_json($json) if $json =~ m!^\s*\{!s;
+  return JSON::Validator::Util::_yaml_load($json);
 }
 
 sub _raise { my $self = shift; die @_, $self->stack_trace->as_string }

@@ -12,6 +12,7 @@ use JSON::Validator::Ref;
 use JSON::Validator::Store;
 use JSON::Validator::Util qw(E data_checksum data_type is_type json_pointer prefix_errors schema_type);
 use List::Util qw(uniq);
+use Mojo::URL;
 use Path::Tiny;
 use Scalar::Util qw(blessed refaddr);
 use Sub::Install;
