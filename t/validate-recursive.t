@@ -2,26 +2,38 @@ use warnings;
 use strict;
 
 use JSON::Validator;
-use Test::Mojo;
 use Test::More;
 
-use Mojolicious::Lite;
-post '/' => sub {
-  my $c      = shift;
-  my @errors = JSON::Validator->new->schema('data://main/spec.json')->validate($c->req->json);
-  $c->render(status => @errors ? 400 : 200, json => \@errors);
-};
+my $jv = JSON::Validator->new->schema('data://main/spec.json');
 
-my $t = Test::Mojo->new;
+my @cases = (
+  {name => "missing top-level property fails", json => {}, error => "/person: Missing property.",},
+  {name => "top-level property OK", json => {person => {name => 'superwoman'}},},
+  {
+    name => "top-level property and child property OK",
+    json => {person => {name => 'superwoman', children => [{name => 'batboy'}]}},
+  },
+  {
+    name  => "top-level propety with bad child property fails",
+    json  => {person => {name => 'superwoman', children => [{}]}},
+    error => "/person/children/0/name: Missing property.",
+  }
+);
 
-$t->post_ok('/', json => {})->status_is(400)->content_like(qr{/person});
-$t->post_ok('/', json => {person => {name => 'superwoman'}})->status_is(200);
-$t->post_ok('/', json => {person => {name => 'superwoman', children => [{name => 'batboy'}]}})->status_is(200);
-$t->post_ok('/', json => {person => {name => 'superwoman', children => [{}]}})->status_is(400)
-  ->json_is('/0/path' => '/person/children/0/name');
+for my $case (@cases) {
+  subtest $case->{name} => sub {
+    my @errors = $jv->validate($case->{json}), "attempt validation";
+    if ($case->{error}) {
+      is @errors, 1, "... and we have one error";
+      is $errors[0]->to_string, $case->{error}, "... and error is as expected";
+    }
+    else {
+      ok !@errors, "... and we have no errors";
+    }
+  };
+}
 
 done_testing;
-
 __DATA__
 @@ spec.json
 {
