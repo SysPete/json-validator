@@ -12,7 +12,7 @@ my @errors  = $jv->validate({age => 1, weight => {mass => 72, unit => 'kg'}, hei
 is int(@errors), 0, 'valid input';
 
 $file  = path($workdir, 'spec', 'with-relative-ref.json');
-my $jv = JSON::Validator->new(cache_paths => [])->schema($file);
+$jv = JSON::Validator->new(cache_paths => [])->schema($file);
 @errors = $jv->validate({age => 'not a number'});
 is int(@errors), 1, 'invalid age';
 

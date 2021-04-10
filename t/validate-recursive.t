@@ -22,7 +22,7 @@ my @cases = (
 
 for my $case (@cases) {
   subtest $case->{name} => sub {
-    my @errors = $jv->validate($case->{json}), "attempt validation";
+    my @errors = $jv->validate($case->{json});
     if ($case->{error}) {
       is @errors, 1, "... and we have one error";
       is $errors[0]->to_string, $case->{error}, "... and error is as expected";
