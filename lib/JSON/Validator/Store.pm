@@ -141,7 +141,7 @@ sub _load_from_url {
 
   if ($cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path) {
     $cache_file = path( $cache_path, $cache_file );
-    $cache_file->spurt($tx->res->body);
+    $cache_file->spew_utf8($tx->res->body);
   }
 
   return $self->add($url => $self->_parse($tx->res->body));
