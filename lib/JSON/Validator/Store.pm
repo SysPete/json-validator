@@ -3,7 +3,6 @@ package JSON::Validator::Store;
 use Digest::MD5 'md5_hex';
 use File::Spec;
 use JSON::MaybeXS ();
-use JSON::Validator::Schema;
 use JSON::Validator::Util qw(data_section);
 use Mojo::URL;
 use Mojo::UserAgent;
