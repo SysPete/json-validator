@@ -3,7 +3,6 @@ package JSON::Validator::Store;
 use Digest::MD5 'md5_hex';
 use File::Spec;
 use JSON::MaybeXS ();
-use JSON::Validator::Schema;
 use JSON::Validator::Util qw(data_section);
 use Mojo::URL;
 use Mojo::UserAgent;
@@ -141,7 +140,7 @@ sub _load_from_url {
 
   if ($cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path) {
     $cache_file = path( $cache_path, $cache_file );
-    $cache_file->spurt($tx->res->body);
+    $cache_file->spew_utf8($tx->res->body);
   }
 
   return $self->add($url => $self->_parse($tx->res->body));

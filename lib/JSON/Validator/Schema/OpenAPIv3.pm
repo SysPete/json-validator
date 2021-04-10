@@ -142,7 +142,7 @@ sub _coerce_parameter_style_array {
     $re = qr{,} if $val->{value} =~ s/^$re// and !$explode;
   }
 
-  return $val->{value} = [_split($re, $val->{value})];
+  return $val->{value} = [split($re, $val->{value})];
 }
 
 sub _coerce_parameter_style_object {
@@ -157,7 +157,7 @@ sub _coerce_parameter_style_object {
     return if $style eq 'matrix' && $val->{value} !~ s/^;//;
     return if $style eq 'label'  && $val->{value} !~ s/^\.//;
     my $params = Mojo::Parameters->new;
-    $params->append(Mojo::Parameters->new($_)) for _split($re, $val->{value});
+    $params->append(Mojo::Parameters->new($_)) for split($re, $val->{value});
     return $val->{value} = $params->to_hash;
   }
   else {
@@ -172,7 +172,7 @@ sub _coerce_parameter_style_object {
     return unless my $re = $style_re->{$style};
     return if $style eq 'matrix' && $val->{value} !~ s/^;\Q$param->{name}\E=//;
     return if $style eq 'label'  && $val->{value} !~ s/^\.//;
-    return $val->{value} = Mojo::Parameters->new->pairs([_split($re, $val->{value})])->to_hash;
+    return $val->{value} = Mojo::Parameters->new->pairs([split($re, $val->{value})])->to_hash;
   }
 }
 
@@ -222,12 +222,6 @@ sub _get_parameter_value {
   my $val = $get->{$param->{in}}->($name, $param);
   @$val{qw(in name)} = (@$param{qw(in name)});
   return $val;
-}
-
-sub _split {
-  my ($re, $val) = @_;
-  $val = @$val ? $val->[-1] : '' if ref $val;
-  return split /$re/, $val;
 }
 
 sub _to_list { ref $_[0] eq 'ARRAY' ? @{$_[0]} : $_[0] ? ($_[0]) : () }
