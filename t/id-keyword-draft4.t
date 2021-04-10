@@ -3,26 +3,40 @@ use strict;
 
 use JSON::Validator;
 use JSON::MaybeXS 'encode_json';
-use Test::Mojo;
 use Test::More;
 
-my ($base_url, $jv, $t, @e);
+my %json = (
+  invalid_fragment     => '{"id": "http://example.com/invalid-fragment.json#cannot_be_here"}',
+  invalid_relative     => '{"id": "whatever"}',
+  relative_to_the_root => '{
+    "id": "http://example.com/relative-to-the-root.json",
+    "definitions": {
+      "A": { "id": "#a" },
+      "B": {
+        "id": "b.json",
+        "definitions": {
+          "X": { "id": "#bx" },
+          "Y": { "id": "t/inner.json" }
+        }
+      },
+      "C": {
+        "id": "c.json",
+        "definitions": {
+          "X": { "id": "urn:uuid:ee564b8a-7a87-4125-8c96-e9f123d6766f" },
+          "Y": { "id": "#cy" }
+        }
+      },
+      "R1": { "$ref": "b.json#bx" },
+      "R2": { "$ref": "#a" },
+      "R3": { "$ref": "urn:uuid:ee564b8a-7a87-4125-8c96-e9f123d6766f" }
+    }
+  }',
+);
 
-use Mojolicious::Lite;
-get '/invalid-fragment'     => [format => ['json']] => 'invalid-fragment';
-get '/invalid-relative'     => [format => ['json']] => 'invalid-relative';
-get '/relative-to-the-root' => [format => ['json']] => 'relative-to-the-root';
+my $jv = JSON::Validator->new;
 
-$t  = Test::Mojo->new;
-$jv = JSON::Validator->new(ua => $t->ua);
-$t->get_ok('/relative-to-the-root.json')->status_is(200);
-
-$base_url = $t->tx->req->url->to_abs->path('/');
-like $base_url, qr{^http}, 'got base_url to web server';
-is $jv->_id_key, 'id', 'default id_key';
-
-eval { $jv->load_and_validate_schema("${base_url}relative-to-the-root.json") };
-ok !$@, "${base_url}relative-to-the-root.json" or diag $@;
+eval { $jv->load_and_validate_schema($json{relative_to_the_root}) };
+ok !$@, "relative_to_the_root" or diag $@;
 isa_ok $jv->schema, 'JSON::Validator::Schema::Draft4';
 
 my $schema = $jv->schema;
@@ -43,40 +57,10 @@ is $r1->ref, 'b.json#bx',                    'R1 ref';
 is $r1->fqn, 'http://example.com/b.json#bx', 'R1 fqn';
 is_deeply $r1->schema, {id => '#bx'}, 'R1 schema';
 
-eval { $jv->load_and_validate_schema("${base_url}invalid-fragment.json") };
+eval { $jv->load_and_validate_schema($json{invalid_fragment}) };
 like $@, qr{cannot have a fragment}, 'Root id cannot have a fragment' or diag $@;
 
-eval { $jv->load_and_validate_schema("${base_url}invalid-relative.json") };
+eval { $jv->load_and_validate_schema($json{invalid_relative}) };
 like $@, qr{cannot have a relative}, 'Root id cannot be relative' or diag $@;
 
 done_testing;
-
-__DATA__
-@@ invalid-fragment.json.ep
-{"id": "http://example.com/invalid-fragment.json#cannot_be_here"}
-@@ invalid-relative.json.ep
-{"id": "whatever"}
-@@ relative-to-the-root.json.ep
-{
-  "id": "http://example.com/relative-to-the-root.json",
-  "definitions": {
-    "A": { "id": "#a" },
-    "B": {
-      "id": "b.json",
-      "definitions": {
-        "X": { "id": "#bx" },
-        "Y": { "id": "t/inner.json" }
-      }
-    },
-    "C": {
-      "id": "c.json",
-      "definitions": {
-        "X": { "id": "urn:uuid:ee564b8a-7a87-4125-8c96-e9f123d6766f" },
-        "Y": { "id": "#cy" }
-      }
-    },
-    "R1": { "$ref": "b.json#bx" },
-    "R2": { "$ref": "#a" },
-    "R3": { "$ref": "urn:uuid:ee564b8a-7a87-4125-8c96-e9f123d6766f" }
-  }
-}
