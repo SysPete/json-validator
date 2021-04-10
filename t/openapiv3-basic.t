@@ -61,8 +61,7 @@ subtest 'parameters_for_response' => sub {
 };
 
 subtest 'validate_request' => sub {
-  $p      = Mojo::Parameters->new('limit=10&foo=42');
-  @errors = $schema->validate_request([get => '/pets'], {query => $p->to_hash});
+  @errors = $schema->validate_request([get => '/pets'], {query => {limit => '10', foo => '42'}});
   is "@errors", '', 'limit ok, even as string';
 
   @errors = $schema->validate_request([get => '/pets'], {query => {limit => 'foo'}});

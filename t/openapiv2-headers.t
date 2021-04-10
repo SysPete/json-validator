@@ -1,16 +1,41 @@
 use warnings;
 use strict;
 
+package Test::Headers;
+
+use Moo;
+has headers => (is => 'ro', default => sub { {} },);
+
+sub header {
+  my ($self, $key, $value) = @_;
+  $self->headers->{$key} = ref $value ? $value : [$value];
+  return $self;
+}
+
+sub add {
+  my ($self, $key, $value) = @_;
+  push @{$self->headers->{$key}}, $value;
+}
+
+sub to_hash {
+  my ($self, $want_multi) = @_;
+  return $self->headers if $want_multi;
+  my $headers = $self->headers;
+  return {map { $_ => $headers->{$_}[0] } keys %$headers};
+}
+
+package main;
+
 use JSON::Validator;
-use Mojo::Headers;
 use Test::More;
 
 my $schema  = JSON::Validator->new->schema('data://main/spec.json')->schema;
-my $headers = Mojo::Headers->new;
+my $headers = Test::Headers->new;
 my $body    = sub { +{exists => 1, value => {}} };
 my @errors;
 
 $headers->header('X-Number' => 'x')->header('X-String' => '123');
+
 @errors = $schema->validate_request([get => '/test'], {header => $headers->to_hash(1)});
 is "@errors", '/X-Number: Expected number - got string.', 'request header not a number';
 
