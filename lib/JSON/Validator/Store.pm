@@ -7,6 +7,7 @@ use JSON::MaybeXS ();
 use JSON::Validator::Util qw(data_section);
 use Mojo::URL;
 use Path::Tiny;
+use URI;
 use URI::Escape qw(uri_unescape);
 
 use constant BUNDLED_PATH  => path(__FILE__)->parent->child('cache')->stringify;
@@ -91,8 +92,14 @@ sub _load_from_file {
   return undef unless -e $file;
 
   $file = $file->realpath;
-  my $id = Mojo::URL->new->scheme('file')->host('')->path(CASE_TOLERANT ? lc $file : "$file");
-  return $self->exists($id) || $self->add($id => $self->_parse($file->slurp));
+
+  my $id = URI->new(CASE_TOLERANT ? lc $file : "$file", 'file');
+
+  # XXX Mojo::URL always prefixes with 'file:' but URL does not, and code elsewhere
+  # assumes the prefix will be in place
+  $id =~ s{^/}{file:///};
+
+  return $self->exists($id) || $self->add($id => $self->_parse($file->slurp_utf8));
 }
 
 sub _load_from_text {
