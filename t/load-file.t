@@ -26,7 +26,4 @@ is_deeply [sort keys %{$jv->store->schemas}], [$jv->schema->id], 'schemas in sto
 eval { $jv->load_and_validate_schema('no-such-file.json') };
 like $@, qr{Unable to load schema no-such-file\.json}, 'cannot load no-such-file.json';
 
-eval { $jv->load_and_validate_schema('/no-such-file.json') };
-like $@, qr{Unable to load schema /no-such-file\.json}, 'avoid loading from app, when $ua->server->app is not present';
-
 done_testing;

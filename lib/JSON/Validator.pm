@@ -1228,11 +1228,7 @@ the call/inheritance tree.
 =item * Any other URL
 
 An URL (without a recognized scheme) will be treated as a path to a file on
-disk. If the file could not be found on disk and the path starts with "/", then
-the will be loaded from the app defined in L</ua>. Something like this:
-
-  $jv->ua->server->app(MyMojoApp->new);
-  $jv->ua->get('/any/other/url.json');
+disk.
 
 =back
 

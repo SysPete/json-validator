@@ -66,22 +66,8 @@ sub load {
     || $self->_load_from_data($source)
     || $self->_load_from_text($source)
     || $self->_load_from_file($source)
-    || $self->_load_from_app($source)
     || $self->get($source)
     || $self->_raise("Unable to load schema $source");
-}
-
-sub _load_from_app {
-  my ($self, $url, $id) = @_;
-
-  return undef unless $url =~ m!^/!;
-  return undef unless $self->ua->server->app;
-  return $id if $id = $self->exists($url);
-
-  my $tx  = $self->ua->get($url);
-  my $err = $tx->error && $tx->error->{message};
-  $self->_raise($err) if $err;
-  return $self->add($url => $self->_parse($tx->res->body));
 }
 
 sub _load_from_data {
@@ -236,7 +222,6 @@ Used to retrieve a C<$schema> added by L</add> or L</load>.
   my $normalized_id = $store->load(\$text);
   my $normalized_id = $store->load('/path/to/foo.json');
   my $normalized_id = $store->load('file:///path/to/foo.json');
-  my $normalized_id = $store->load('/load/from/ua-server-app');
 
 Can load a C<$schema> from many different sources. The input can be a string or
 a string-like object, and the L</load> method will try to resolve it in the
@@ -247,12 +232,6 @@ looking like "urn:text:$text_checksum". This might change in the future!
 
 Loading files from disk will result in a C<$normalized_id> that always start
 with "file://".
-
-Loading can also be done with relative path, which will then load from:
-
-  $store->ua->server->app;
-
-This method is EXPERIMENTAL, but unlikely to change significantly.
 
 =head1 SEE ALSO
 
