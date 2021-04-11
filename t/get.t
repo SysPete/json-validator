@@ -18,7 +18,6 @@ ok $jv->schema->contains('/bar/0'), 'contains';
 # since it allows the JSON pointer to be passed on as well.
 is_deeply $jv->get(['bar', undef, 'y']), ['first', 'second', undef], 'get /bar/undef/y';
 is_deeply $jv->get([undef, undef, 'y']), [['first', 'second', undef], ['foo']], 'get /undef/undef/y';
-is_deeply $jv->get([undef, undef, 'y'])->flatten, ['first', 'second', undef, 'foo'], 'get /undef/undef/y flatten';
 
 is_deeply schema_extract($jv->schema->data, ['bar', undef, 'y']), ['first', 'second', undef],
   'schema_extract /bar/undef/y';

@@ -9,9 +9,8 @@ use Encode ();
 use Exporter 'import';
 use JSON::MaybeXS ();
 use JSON::Validator::Error;
-use List::Util;
-use Mojo::Collection;
 use JSON::Validator::Util::Loader;
+use List::Util;
 use Scalar::Util 'blessed';
 
 use constant SEREAL_SUPPORT => !$ENV{JSON_VALIDATOR_NO_SEREAL} && eval 'use Sereal::Encoder 4.00;1';
@@ -193,9 +192,9 @@ sub _schema_extract {
 
     unless (defined $p) {
       my $i = 0;
-      return Mojo::Collection->new(map { _schema_extract($_->[0], [@$path], json_pointer($pos, $_->[1]), $cb) }
+      return [map { _schema_extract($_->[0], [@$path], json_pointer($pos, $_->[1]), $cb) }
           ref $data eq 'ARRAY' ? map { [$_, $i++] }
-          @$data : ref $data eq 'HASH' ? map { [$data->{$_}, $_] } sort keys %$data : [$data, '']);
+          @$data : ref $data eq 'HASH' ? map { [$data->{$_}, $_] } sort keys %$data : [$data, '']];
     }
 
     $p =~ s!~1!/!g;
