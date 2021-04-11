@@ -243,9 +243,6 @@ sub _definitions_path {
 
 sub _definitions_path_for_ref { ['definitions'] }
 
-# Try not to break JSON::Validator::OpenAPI::Mojolicious
-sub _get { shift; JSON::Validator::Util::_schema_extract(@_) }
-
 sub _find_and_resolve_refs {
   my ($self, $base_url, $schema) = @_;
   my %root = is_type($schema, 'HASH') ? %$schema : ();
