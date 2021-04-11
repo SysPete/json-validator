@@ -2,10 +2,10 @@ package JSON::Validator::Store;
 
 use Digest::MD5 'md5_hex';
 use File::Spec;
+use HTTP::Tiny;
 use JSON::MaybeXS ();
 use JSON::Validator::Util qw(data_section);
 use Mojo::URL;
-use Mojo::UserAgent;
 use Path::Tiny;
 use URI::Escape qw(uri_unescape);
 
@@ -32,9 +32,9 @@ has ua => (
   is      => 'rw',
   lazy    => 1,
   default => sub {
-    my $ua = Mojo::UserAgent->new;
-    $ua->proxy->detect;
-    return $ua->max_redirects(3);
+    return HTTP::Tiny->new(
+        max_redirect => 3,
+    );
   },
 );
 
@@ -120,16 +120,29 @@ sub _load_from_url {
     return $self->add($url => $self->_parse($path->slurp)) if -r $path;
   }
 
-  my $tx  = $self->ua->get($url);
-  my $err = $tx->error && $tx->error->{message};
-  $self->_raise($err) if $err;
+  my $response = $self->ua->get($url);
+  my $content;
+
+  if ( $self->ua->isa("Mojo::UserAgent") ) {
+      my $err = $response->error && $response->error->{message};
+      $self->_raise($err) if $err;
+
+      $content = $response->res->body;
+  }
+  else {
+    # Assume HTTP::Tiny
+    unless ( $response->{success} ) {
+      $self->_raise($response->{reason});
+    }
+      $content = $response->{content};
+  }
 
   if ($cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path) {
     $cache_file = path( $cache_path, $cache_file );
-    $cache_file->spew_utf8($tx->res->body);
+    $cache_file->spew_utf8($content);
   }
 
-  return $self->add($url => $self->_parse($tx->res->body));
+  return $self->add($url => $self->_parse($content));
 }
 
 sub _parse {
@@ -186,11 +199,11 @@ Hold the schemas as data structures. The keys are schema "id".
   my $ua    = $store->ua;
   my $store = $store->ua(Mojo::UserAgent->new);
 
-Holds a L<Mojo::UserAgent> object, used by L</schema> to load a JSON schema
-from remote location.
+Holds a L<HTTP::Tiny> or L<Mojo::UserAgent> object, used by L</schema> to load a
+JSON schema from remote location.
 
-The default L<Mojo::UserAgent> will detect proxy settings and have
-L<Mojo::UserAgent/max_redirects> set to 3.
+The default L<HTTP::Tiny> will detect proxy settings from environment, and have
+C<max_redirect> set to 3.
 
 =head1 METHODS
 

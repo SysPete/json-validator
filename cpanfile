@@ -5,6 +5,7 @@
 requires 'Carp';
 requires 'Digest::MD5';
 requires 'Digest::SHA';
+requires 'HTTP::Tiny';
 requires 'JSON::MaybeXS';
 requires 'JSON::Pointer';
 requires 'MIME::Base64';
