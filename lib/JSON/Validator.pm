@@ -297,7 +297,7 @@ sub _new_schema {
   $attrs{specification} = delete $attrs{schema} if $attrs{schema};
 
   my $loadable
-    = (blessed $source && ($source->can('scheme') || $source->isa('Mojo::File')))
+    = (blessed $source && ($source->can('scheme') || ("$source" !~ /\n/ && -f "$source")))
     || ($source !~ /\n/ && -f $source)
     || (!ref $source && $source =~ /^\w/);
 
