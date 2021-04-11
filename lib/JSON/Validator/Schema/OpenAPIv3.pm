@@ -1,11 +1,13 @@
 package JSON::Validator::Schema::OpenAPIv3;
 use Mojo::Base 'JSON::Validator::Schema::Draft201909';
 
+use Encode qw(decode);
 use JSON::Validator::Schema::OpenAPIv2;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
 use JSON::MaybeXS 'JSON';
 use JSON::Validator::Path;
 use Sub::Install;
+use URI::Escape qw(uri_unescape);
 
 has moniker       => 'openapiv3';
 has specification => 'https://spec.openapis.org/oas/3.0/schema/2019-04-02';
@@ -156,9 +158,9 @@ sub _coerce_parameter_style_object {
     return unless my $re = $style_re->{$style};
     return if $style eq 'matrix' && $val->{value} !~ s/^;//;
     return if $style eq 'label'  && $val->{value} !~ s/^\.//;
-    my $params = Mojo::Parameters->new;
-    $params->append(Mojo::Parameters->new($_)) for split($re, $val->{value});
-    return $val->{value} = $params->to_hash;
+
+    # XXX do we need something cleverer here like URL::Encode ?
+    return $val->{value} = { map { decode('UTF-8', uri_unescape($_)) } map { split /=/ } split($re, $val->{value}) };
   }
   else {
     state $style_re = {
@@ -172,7 +174,7 @@ sub _coerce_parameter_style_object {
     return unless my $re = $style_re->{$style};
     return if $style eq 'matrix' && $val->{value} !~ s/^;\Q$param->{name}\E=//;
     return if $style eq 'label'  && $val->{value} !~ s/^\.//;
-    return $val->{value} = Mojo::Parameters->new->pairs([split($re, $val->{value})])->to_hash;
+    return $val->{value} = { map { decode('UTF-8', uri_unescape($_)) } split($re, $val->{value}) };
   }
 }
 
