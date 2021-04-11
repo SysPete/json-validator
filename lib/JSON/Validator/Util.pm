@@ -11,7 +11,7 @@ use JSON::MaybeXS ();
 use JSON::Validator::Error;
 use List::Util;
 use Mojo::Collection;
-use Mojo::Loader;
+use JSON::Validator::Util::Loader;
 use Scalar::Util 'blessed';
 
 use constant SEREAL_SUPPORT => !$ENV{JSON_VALIDATOR_NO_SEREAL} && eval 'use Sereal::Encoder 4.00;1';
@@ -44,7 +44,7 @@ sub data_section {
   for my $group (@classes) {
     push @$group, grep { !/$data_section_skip_re/ } do { no strict 'refs'; @{"$group->[0]\::ISA"} };
     for my $class (@$group) {
-      next unless my $text = Mojo::Loader::data_section($class, $file);
+      next unless my $text = JSON::Validator::Util::Loader::data_section($class, $file);
       return Encode::encode($params->{encoding}, $text) if $params->{encoding};
       return $text;
     }
@@ -264,7 +264,7 @@ Will create a checksum for any data structure stored in C<$any>.
   $str = data_section "Some::Module", "file.json";
   $str = data_section "Some::Module", "file.json", {encode => 'UTF-8'};
 
-Same as L<Mojo::Loader/data_section>, but will also look up the file in any
+Same as L<JSON::Validator::Util::Loader/data_section>, but will also look up the file in any
 inherited class.
 
 =head2 data_type

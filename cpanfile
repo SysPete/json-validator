@@ -2,10 +2,12 @@
 
 # vim: ft=perl
 
+requires 'Carp';
 requires 'Digest::MD5';
 requires 'Digest::SHA';
 requires 'JSON::MaybeXS';
 requires 'JSON::Pointer';
+requires 'MIME::Base64';
 requires 'Moo' => '2.000000';
 requires 'namespace::clean';
 requires 'Path::Tiny';
