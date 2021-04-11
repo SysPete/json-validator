@@ -21,7 +21,7 @@ subtest 'basic' => sub {
   is "@errors", '/info: Missing property.', 'invalid schema';
 
   is_deeply(
-    $schema->routes->to_array,
+    $schema->routes,
     [
       {method => 'get',  operation_id => 'listPets',    path => '/pets'},
       {method => 'post', operation_id => 'createPets',  path => '/pets'},

@@ -3,7 +3,6 @@ use Mojo::Base 'JSON::Validator::Schema::Draft4';
 
 use JSON::Validator::Path;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
-use Mojo::Collection;
 
 my $X_RE = qr{^x-};
 
@@ -116,7 +115,7 @@ sub routes {
     }
   }
 
-  return Mojo::Collection->new(@operations);
+  return \@operations;
 }
 
 sub validate_request {
@@ -466,7 +465,7 @@ The return value MUST not be mutated.
   $collection = $schema->routes;
 
 Used to gather all available routes in the schema and return them sorted. The
-result is a L<Mojo::Collection> object, where each item has a hash looking like
+result is an array reference, where each item has a hash looking like
 this:
 
   {

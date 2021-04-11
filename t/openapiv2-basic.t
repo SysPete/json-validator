@@ -26,7 +26,7 @@ subtest 'basic' => sub {
   isa_ok $schema, 'JSON::Validator::Schema::OpenAPIv2';
 
   is_deeply(
-    $schema->routes->to_array,
+    $schema->routes,
     [
       {method => 'get',  operation_id => 'listPets',    path => '/pets'},
       {method => 'post', operation_id => 'createPets',  path => '/pets'},
