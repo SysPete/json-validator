@@ -1,5 +1,5 @@
 package JSON::Validator;
-use Mojo::Base -base;
+use Moo;
 use Exporter 'import';
 
 use Carp qw(confess);
@@ -31,15 +31,34 @@ our %SCHEMAS = (
   'https://spec.openapis.org/oas/3.0/schema/2019-04-02' => '+OpenAPIv3',
 );
 
-has formats                   => sub { shift->_build_formats };
-has recursive_data_protection => 1;
+has formats => (
+    is      => 'ro',
+    lazy    => 1,
+    default => sub { shift->_build_formats },
+);
 
-has store => sub {
-  my $self = shift;
-  my %attrs;
-  $attrs{$_} = delete $self->{$_} for grep { $self->{$_} } qw(cache_paths ua);
-  return JSON::Validator::Store->new(%attrs);
+has recursive_data_protection => (
+    is      => 'rw',
+    default => 1,
+);
+
+# Mojo mutators return $self
+around recursive_data_protection => sub {
+    my ( $orig, $self, @args ) = @_;
+    my $ret = $self->$orig(@args);
+    return @args ? $self : $ret;
 };
+
+has store => (
+    is      => 'rw',
+    lazy    => 1,
+    default => sub {
+        my $self = shift;
+        my %attrs;
+        $attrs{$_} = delete $self->{$_} for grep { $self->{$_} } qw(cache_paths ua);
+        return JSON::Validator::Store->new(%attrs);
+    }
+);
 
 my $encoder = JSON->new->allow_nonref;
 
@@ -121,6 +140,7 @@ sub bundle {
   return $bundle;
 }
 
+my $short = {bool => 'booleans', def => 'defaults', num => 'numbers', str => 'strings'};
 sub coerce {
   my $self = shift;
   return $self->{coerce} ||= {} unless defined(my $what = shift);
@@ -129,8 +149,6 @@ sub coerce {
     warn('coerce(1) will be deprecated.');
     $what = {booleans => 1, numbers => 1, strings => 1};
   }
-
-  state $short = {bool => 'booleans', def => 'defaults', num => 'numbers', str => 'strings'};
 
   $what                                 = {map { ($_ => 1) } split /,/, $what} unless ref $what;
   $self->{coerce}                       = {};
@@ -154,10 +172,9 @@ sub load_and_validate_schema {
   return $self;
 }
 
-sub new {
-  my $self = shift->SUPER::new(@_);
-  $self->coerce($self->{coerce}) if defined $self->{coerce};
-  return $self;
+sub BUILD {
+    my ( $self, $args ) = @_;
+    $self->coerce($args->{coerce}) if defined $args->{coerce};
 }
 
 sub schema {
@@ -291,6 +308,10 @@ sub _id_key { $_[0]->schema ? $_[0]->schema->_id_key : 'id' }
 
 sub _new_schema {
   my ($self, $source, %attrs) = @_;
+
+  use DDP;
+  p $source;
+  p %attrs;
   return $source if blessed $source and $source->can('specification');
 
   # Compat with load_and_validate_schema()
