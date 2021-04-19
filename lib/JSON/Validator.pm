@@ -309,9 +309,6 @@ sub _id_key { $_[0]->schema ? $_[0]->schema->_id_key : 'id' }
 sub _new_schema {
   my ($self, $source, %attrs) = @_;
 
-  use DDP;
-  p $source;
-  p %attrs;
   return $source if blessed $source and $source->can('specification');
 
   # Compat with load_and_validate_schema()
