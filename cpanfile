@@ -3,6 +3,7 @@
 # vim: ft=perl
 
 requires 'Carp';
+requires 'Class::Method::Modifiers' => '1.05';  # install_modifier
 requires 'Digest::MD5';
 requires 'Digest::SHA';
 requires 'HTTP::Tiny';

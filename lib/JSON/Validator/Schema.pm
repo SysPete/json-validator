@@ -1,33 +1,51 @@
 package JSON::Validator::Schema;
-use Mojo::Base 'JSON::Validator';    # TODO: Change this to "use Mojo::Base -base"
+use Moo;
+extends 'JSON::Validator';
 
 use Carp 'carp';
 use JSON::Pointer;
 use JSON::Validator::Util qw(E is_type);
 
-has errors => sub {
-  my $self      = shift;
-  my $url       = $self->specification || 'http://json-schema.org/draft-04/schema#';
-  my $validator = $self->new(%$self)->resolve($url);
+has errors => (
+    is      => 'rw',
+    lazy    => 1,
+    default => sub {
+        my $self      = shift;
+        my $url       = $self->specification || 'http://json-schema.org/draft-04/schema#';
+        my $validator = $self->new(%$self)->resolve($url);
 
-  return [$validator->validate($self->resolve->data)];
-};
+        return [$validator->validate($self->resolve->data)];
+    },
+    clearer => 'clear_errors',
+);
 
-has id => sub {
-  my $data = shift->data;
-  return is_type($data, 'HASH') ? $data->{'$id'} || $data->{id} || '' : '';
-};
+has id => (
+    is      => 'rw',
+    lazy    => 1,
+    default => sub {
+        my $data = shift->data;
+        return is_type($data, 'HASH') ? $data->{'$id'} || $data->{id} || '' : '';
+    }
+);
 
-has moniker => sub {
-  my $self = shift;
-  return "draft$1" if $self->specification =~ m!draft-(\d+)!;
-  return '';
-};
+has moniker => (
+    is      => 'rw',
+    lazy    => 1,
+    default => sub {
+        my $self = shift;
+        return "draft$1" if $self->specification =~ m!draft-(\d+)!;
+        return '';
+    }
+);
 
-has specification => sub {
-  my $data = shift->data;
-  is_type($data, 'HASH') ? $data->{'$schema'} || $data->{schema} || '' : '';
-};
+has specification => (
+    is => 'rw',
+    lazy => 1,
+    default => sub {
+        my $data = shift->data;
+        is_type($data, 'HASH') ? $data->{'$schema'} || $data->{schema} || '' : '';
+    }
+);
 
 sub bundle {
   my $self   = shift;
@@ -36,33 +54,60 @@ sub bundle {
 }
 
 sub contains {
-  return JSON::Pointer->contains(shift->{data}, @_);
+    my ( $self, @args) = @_;
+    return JSON::Pointer->contains($self->data, @args);
 }
 
-sub data {
-  my $self = shift;
-  return $self->{data} //= {} unless @_;
-  $self->{data} = shift;
-  delete $self->{errors};
-  return $self;
-}
+has data => (
+    is      => 'rw',
+    default => sub { {} },
+);
+
+around data => sub {
+    my ( $orig, $self, @args ) = @_;
+    my $ret = $self->$orig(@args);
+    if ( @args ) {
+        $self->clear_errors;
+        return $self;
+    }
+    else {
+        return $ret;
+    }
+};
 
 sub get {
-  return JSON::Pointer->get(shift->{data}, @_) if @_ == 2 and ref $_[1] ne 'ARRAY';
+  return JSON::Pointer->get(shift->data, @_) if @_ == 2 and ref $_[1] ne 'ARRAY';
   return JSON::Validator::Util::schema_extract(shift->data, @_);
 }
 
 sub load_and_validate_schema { Carp::confess('load_and_validate_schema(...) is unsupported.') }
 
-sub new {
-  return shift->SUPER::new(@_) if @_ % 2;
-  my ($class, $data) = (shift, shift);
-  return $class->SUPER::new(@_)->resolve($data);
+around BUILDARGS => sub {
+    my ( $orig, $class, @args ) = @_;
+
+    return $class->$orig(@args) unless @args % 2;
+
+    my ( $data, %args ) = @args;
+
+    return $class->$orig(data => $data, %args);
+};
+
+sub BUILD {
+    my ( $self, $args ) = @_;
+    if ( $args->{data} ) {
+        $self->resolve( $args->{data} );
+    }
 }
+
+#sub new {
+#  return shift->SUPER::new(@_) if @_ % 2;
+#  my ($class, $data) = (shift, shift);
+#  return $class->SUPER::new(@_)->resolve($data);
+#}
 
 sub resolve {
   my $self = shift;
-  return $self->data($self->_resolve(@_ ? shift : $self->{data}));
+  return $self->data($self->_resolve(@_ ? shift : $self->data));
 }
 
 sub validate {
@@ -96,8 +141,11 @@ JSON::Validator::Schema - Base class for JSON::Validator schemas
 =head1 SYNOPSIS
 
   package JSON::Validator::Schema::SomeSchema;
-  use Mojo::Base "JSON::Validator::Schema";
-  has specification => "https://api.example.com/my/spec.json#";
+  use Moo;
+  extends "JSON::Validator::Schema";
+  has '+specification' => (
+    default => "https://api.example.com/my/spec.json#"
+  );
   1;
 
 =head1 DESCRIPTION
