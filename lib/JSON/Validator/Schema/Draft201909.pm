@@ -4,6 +4,7 @@ extends 'JSON::Validator::Schema::Draft7';
 
 use JSON::Validator::Util qw(E is_type json_pointer);
 use Scalar::Util qw(blessed refaddr);
+use URI;
 
 my $ANCHOR_RE = qr{[A-Za-z][A-Za-z0-9:._-]*};
 
@@ -42,9 +43,9 @@ sub _find_and_resolve_refs {
 
       my $base_url = $base_url;    # do not change the global $base_url
       if ($topic->{'$id'} and !ref $topic->{'$id'}) {
-        my $id = Mojo::URL->new($topic->{'$id'});
-        $id = $id->to_abs($base_url) unless $id->is_abs;
-        $self->store->add($id->to_string => $topic);
+        my $id = URI->new($topic->{'$id'});
+        $id = $id->abs($base_url) unless !!$id->scheme;
+        $self->store->add($id->as_string => $topic);
         $base_url = $id;
       }
 
