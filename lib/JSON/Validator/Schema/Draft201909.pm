@@ -1,13 +1,22 @@
 package JSON::Validator::Schema::Draft201909;
-use Mojo::Base 'JSON::Validator::Schema::Draft7';
+use Moo;
+extends 'JSON::Validator::Schema::Draft7';
 
 use JSON::Validator::Util qw(E is_type json_pointer);
 use Scalar::Util qw(blessed refaddr);
 
 my $ANCHOR_RE = qr{[A-Za-z][A-Za-z0-9:._-]*};
 
-has specification => 'https://json-schema.org/draft/2019-09/schema';
-has _anchors      => sub { +{} };
+has specification => (
+    is      => 'ro',
+    lazy    => 1,
+    default => 'https://json-schema.org/draft/2019-09/schema',
+);
+
+has _anchors => (
+    is      => 'ro',
+    default => sub { +{} },
+);
 
 sub _build_formats {
   my $formats = shift->SUPER::_build_formats;

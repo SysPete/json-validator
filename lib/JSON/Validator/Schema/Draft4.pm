@@ -1,15 +1,21 @@
 package JSON::Validator::Schema::Draft4;
-use Mojo::Base 'JSON::Validator::Schema';
+use Moo;
+extends 'JSON::Validator::Schema';
 
 use JSON::Validator::Util qw(E data_checksum data_type is_type json_pointer);
 use List::Util 'uniq';
 
-has id => sub {
-  my $data = shift->data;
-  return is_type($data, 'HASH') ? $data->{id} || '' : '';
-};
+has '+id' => (
+    default => sub {
+        my $data = shift->data;
+        return is_type($data, 'HASH') ? $data->{id} || '' : '';
+    },
+);;
 
-has specification => 'http://json-schema.org/draft-04/schema#';
+has specification => (
+    is      => 'ro',
+    default => 'http://json-schema.org/draft-04/schema#',
+);
 
 sub _build_formats {
   return {

@@ -1,14 +1,20 @@
 package JSON::Validator::Schema::Draft6;
-use Mojo::Base 'JSON::Validator::Schema::Draft4';
+use Moo;
+extends 'JSON::Validator::Schema::Draft4';
 
 use JSON::Validator::Util qw(E data_type is_type prefix_errors);
 
-has id => sub {
-  my $data = shift->data;
-  return is_type($data, 'HASH') ? $data->{'$id'} || '' : '';
-};
+has '+id' => (
+    default => sub {
+        my $data = shift->data;
+        return is_type($data, 'HASH') ? $data->{'$id'} || '' : '';
+    },
+);
 
-has specification => 'http://json-schema.org/draft-06/schema#';
+has specification => (
+    is      => 'ro',
+    default => 'http://json-schema.org/draft-06/schema#',
+);
 
 sub _build_formats {
   return {

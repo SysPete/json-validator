@@ -1,5 +1,6 @@
 package JSON::Validator::Schema::OpenAPIv3;
-use Mojo::Base 'JSON::Validator::Schema::Draft201909';
+use Moo;
+extends 'JSON::Validator::Schema::Draft201909';
 
 use Encode qw(decode);
 use JSON::Validator::Schema::OpenAPIv2;
@@ -9,8 +10,13 @@ use JSON::Validator::Path;
 use Sub::Install;
 use URI::Escape qw(uri_unescape);
 
-has moniker       => 'openapiv3';
-has specification => 'https://spec.openapis.org/oas/3.0/schema/2019-04-02';
+has '+moniker' => (
+    default => 'openapiv3',
+);
+
+has '+specification' => (
+    default => 'https://spec.openapis.org/oas/3.0/schema/2019-04-02',
+);
 
 # some methods are shared with OpenAPIv2
 Sub::Install::install_sub(
@@ -21,10 +27,9 @@ Sub::Install::install_sub(
 ) for qw(coerce routes validate_request validate_response),
   qw(_coerce_arrays _coerce_default_value _find_all_nodes _prefix_error_path _validate_request_or_response);
 
-sub new {
-  my $self = shift->SUPER::new(@_);
-  $self->coerce;    # make sure this attribute is built
-  $self;
+sub BUILD {
+    my ( $self, $args ) = @_;
+    $self->coerce;    # make sure this attribute is built
 }
 
 sub parameters_for_request {
@@ -116,7 +121,7 @@ sub _coerce_parameter_format {
   my ($self, $val, $param) = @_;
   return unless $val->{exists};
 
-  state $in_style = {cookie => 'form', header => 'simple', path => 'simple', query => 'form'};
+  my $in_style = {cookie => 'form', header => 'simple', path => 'simple', query => 'form'};
   $param->{style} = $in_style->{$param->{in}} unless $param->{style};
   return $self->_coerce_parameter_style_object_deep($val, $param) if $param->{style} eq 'deepObject';
 
@@ -154,7 +159,7 @@ sub _coerce_parameter_style_object {
 
   if ($explode) {
     return if $style eq 'form';
-    state $style_re = {label => qr{\.}, matrix => qr{;}, simple => qr{,}};
+    my $style_re = {label => qr{\.}, matrix => qr{;}, simple => qr{,}};
     return unless my $re = $style_re->{$style};
     return if $style eq 'matrix' && $val->{value} !~ s/^;//;
     return if $style eq 'label'  && $val->{value} !~ s/^\.//;
@@ -163,7 +168,7 @@ sub _coerce_parameter_style_object {
     return $val->{value} = { map { decode('UTF-8', uri_unescape($_)) } map { split /=/ } split($re, $val->{value}) };
   }
   else {
-    state $style_re = {
+    my $style_re = {
       form           => qr{,},
       label          => qr{\.},
       matrix         => qr{,},

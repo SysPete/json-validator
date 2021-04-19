@@ -1,7 +1,11 @@
 package JSON::Validator::Schema::Draft7;
-use Mojo::Base 'JSON::Validator::Schema::Draft6';
+use Moo;
+extends 'JSON::Validator::Schema::Draft6';
 
-has specification => 'http://json-schema.org/draft-07/schema#';
+has specification => (
+    is      => 'ro',
+    default => 'http://json-schema.org/draft-07/schema#',
+);
 
 sub _build_formats {
   return {

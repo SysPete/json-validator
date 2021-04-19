@@ -1,19 +1,27 @@
 package JSON::Validator::Schema::OpenAPIv2;
-use Mojo::Base 'JSON::Validator::Schema::Draft4';
+use Moo;
+extends 'JSON::Validator::Schema::Draft4';
 
 use JSON::Validator::Path;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
 
 my $X_RE = qr{^x-};
 
-has errors => sub {
-  my $self      = shift;
-  my $validator = $self->new(%$self, allow_invalid_ref => 0)->resolve($self->specification);
-  return [$validator->validate($self->resolve->data)];
-};
+has '+errors' => (
+    default => sub {
+        my $self      = shift;
+        my $validator = $self->new(%$self, allow_invalid_ref => 0)->resolve($self->specification);
+        return [$validator->validate($self->resolve->data)];
+    },
+);
 
-has moniker       => 'openapiv2';
-has specification => 'http://swagger.io/v2/schema.json';
+has '+moniker' => (
+    default => 'openapiv2',
+);
+
+has '+specification' => (
+    default => 'http://swagger.io/v2/schema.json',
+);
 
 sub allow_invalid_ref {
   my $self = shift;
@@ -49,10 +57,9 @@ sub data {
   return $self;
 }
 
-sub new {
-  my $self = shift->SUPER::new(@_);
-  $self->coerce;    # make sure this attribute is built
-  $self;
+sub BUILD {
+    my ( $self, $args ) = @_;
+    $self->coerce;    # make sure this attribute is built
 }
 
 sub parameters_for_request {
