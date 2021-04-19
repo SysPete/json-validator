@@ -2,6 +2,8 @@ package t::Helper;
 use warnings;
 use strict;
 
+use Class::Method::Modifiers qw(install_modifier);
+use HTTP::Tiny;
 use JSON::MaybeXS 'JSON';
 use JSON::Pointer;
 use JSON::Validator;
@@ -138,48 +140,23 @@ sub monkey_patch {
 
 sub _acceptance_ua {
   my $schema_class = shift;
-  require Mojo::UserAgent;
-  require Mojolicious;
-  my $ua  = Mojo::UserAgent->new;
-  my $app = Mojolicious->new;
+  my $ua = HTTP::Tiny->new;
 
-  $app->static->paths([path(qw(t spec remotes))->stringify]);
-  $ua->server->app($app);
-
-  $ua->on(
-    $_ => sub {
-      my ($ua, $tx) = @_;
-      my $url = $tx->req->url;
-      $url->scheme(undef)->host(undef)->port(undef) if $url->host and $url->host eq 'localhost';
-    }
-  ) for qw(prepare start);
-
-  my $app_base_url = $ua->get('/')->req->url->to_abs->to_string;
-  $app_base_url =~ s!/$!!;
-
-  my $orig_load_schema = $schema_class->can('_load_schema');
-  monkey_patch( $schema_class => _load_schema => sub {
-    my ($self, $url) = @_;
-    my $cached;
-    return $cached, $url if $cached = $self->_store($url);
-    $url =~ s!^https?://localhost:1234!$app_base_url!;
-    return $self->$orig_load_schema($url);
-  });
-
-  #my $orig_resolve_ref = $schema_class->can('_resolve_ref');
-  #monkey_patch( $schema_class => _resolve_ref => sub {
-  #  my ($self, $ref_url, $base_url, $schema) = @_;
-  #  $ref_url  =~ s!^https?://localhost:1234!$app_base_url!;
-  #  $base_url =~ s!^https?://localhost:1234!$app_base_url!;
-  #  $self->$orig_resolve_ref($ref_url, $base_url, $schema);
-  #)};
-
-  #my $orig_store       = $schema_class->can('_store');
-  #monkey_patch( $schema_class => _store => sub {
-  #  my ($self, $id, $schema) = @_;
-  #  $id =~ s!^https?://localhost:1234!$app_base_url!;
-  #  $self->$orig_store($id, $schema);
-  #)};
+  install_modifier 'HTTP::Tiny', 'around', 'request', sub {
+      my ( $orig, $self, $method, $url, $args ) = @_;
+      if ( $url =~ m{^https?://localhost:1234/(.+)$} ) {
+          my $schema = path(qw(t spec remotes), $1)->slurp_utf8;
+          return {
+              success => 1,
+              url     => $url,
+              status  => 200,
+              content => $schema,
+          };
+      }
+      else {
+          $self->$orig( $method, $url, $args );
+      }
+  };
 
   return $ua;
 }
