@@ -6,7 +6,6 @@ use Encode qw(decode);
 use JSON::Validator::Schema::OpenAPIv2;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
 use JSON::MaybeXS 'JSON';
-use JSON::Validator::Path;
 use Sub::Install;
 use URI::Escape qw(uri_unescape);
 
@@ -216,8 +215,14 @@ sub _coerce_parameter_style_object_deep {
 
 sub _definitions_path_for_ref {
   my ($self, $ref) = @_;
-  my $path = JSON::Validator::Path->new($ref->fqn =~ m!^.*#/(components/.+)$!)->to_dir->parts;
-  return $path->[0] ? $path : ['definitions'];
+  if ( $ref->fqn =~ m!^.*#/(components/.+)$! ) {
+      my $path = $1;
+      $path =~ s{/[^/]+$}{};
+      return [split /\//, $path];
+  }
+  else {
+      return ['definitions']
+  }
 }
 
 sub _get_parameter_value {

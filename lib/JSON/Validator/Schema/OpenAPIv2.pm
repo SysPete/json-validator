@@ -2,7 +2,6 @@ package JSON::Validator::Schema::OpenAPIv2;
 use Moo;
 extends 'JSON::Validator::Schema::Draft4';
 
-use JSON::Validator::Path;
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
 
 my $X_RE = qr{^x-};
@@ -211,8 +210,14 @@ sub _coerce_parameter_format {
 
 sub _definitions_path_for_ref {
   my ($self, $ref) = @_;
-  my $path = JSON::Validator::Path->new($ref->fqn =~ m!^.*#/(definitions|parameters|responses/.+)$!)->to_dir->parts;
-  return $path->[0] ? $path : ['definitions'];
+  if ( $ref->fqn =~ m!^.*#/(definitions|parameters|responses/.+)$! ) {
+      my $path = $1;
+      $path =~ s{/[^/]+$}{};
+      return [split /\//, $path];
+  }
+  else {
+      return ['definitions']
+  }
 }
 
 sub _find_all_nodes {
