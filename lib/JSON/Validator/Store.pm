@@ -6,7 +6,7 @@ use HTTP::Tiny;
 use JSON::MaybeXS ();
 use JSON::Validator::Util qw(data_section);
 use Mojo::URL;
-use Path::Tiny;
+use Path::Tiny qw(cwd path);
 use URI;
 use URI::Escape qw(uri_unescape);
 
@@ -88,7 +88,7 @@ sub _load_from_file {
 
   $file =~ s!^file://!!;
   $file =~ s!#$!!;
-  $file = path(uri_unescape($file));
+  $file = $file ? path(uri_unescape($file)) : cwd;
   return undef unless -e $file;
 
   $file = $file->realpath;
