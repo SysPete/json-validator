@@ -22,7 +22,6 @@ is data_type($e), 'JSON::Validator::Error', 'data_type JSON::Validator::Error';
 
 my $v = JSON::Validator->new;
 ok is_type($v,    'JSON::Validator'), 'is_type JSON::Validator';
-ok is_type($v,    'Mojo::Base'),      'is_type Mojo::Base';
 ok is_type($v,    'HASH'),            'is_type HASH';
 ok is_type([],    'ARRAY'),           'is_type ARRAY';
 ok is_type({},    'HASH'),            'is_type HASH';
