@@ -16,6 +16,7 @@ use List::Util qw(uniq);
 use Mojo::URL;
 use Path::Tiny;
 use Scalar::Util qw(blessed refaddr);
+use Sub::HandlesVia;
 use Type::Params qw(compile);
 use Types::Standard qw(
   Any
@@ -170,7 +171,9 @@ sub bundle {
 }
 
 my %short_coercions = (
-    bool => 'booleans', def => 'defaults', num => 'numbers',
+    bool => 'booleans',
+    def  => 'defaults',
+    num  => 'numbers',
     str  => 'strings'
 );
 
@@ -209,8 +212,7 @@ sub _build_coerce {
 around coerce => sub {
     my ( $orig, $self, @args ) = @_;
 
-    # allow hashref
-    my $ret = @args > 1 ? $self->$orig( {@args} ) : $self->$orig(@args);
+    my $ret = $self->$orig(@args);
 
     # Mojo back-compat: mutators return $self
     return @args ? $self : $ret;
@@ -879,7 +881,7 @@ sub _validate_type_boolean {
     my ( $self, $value, $path, $schema ) = @_;
 
     # String that looks like a boolean
-    if ( defined $value and $self->coerce->{booleans} ) {
+    if ( defined $value and $self->should_coerce('booleans') ) {
         $_[1] = JSON->false if $value =~ m!^(0|false|)$!;
         $_[1] = JSON->true  if $value =~ m!^(1|true)$!;
     }
@@ -916,7 +918,7 @@ sub _validate_type_number {
     }
     unless ( is_type $value, 'NUM' ) {
         return E $path, [ $expected => type => data_type $value]
-          if !$self->coerce->{numbers}
+          if !$self->should_coerce('numbers')
           or $value !~ /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
         $_[1] = 0 + $value;    # coerce input value
     }
@@ -972,7 +974,7 @@ sub _validate_type_object {
     for my $k ( keys %{ $schema->{properties} || {} } ) {
         my $r = $schema->{properties}{$k};
         push @{ $rules{$k} }, $r;
-        if (    $self->coerce->{defaults}
+        if (    $self->should_coerce('defaults')
             and ref $r eq 'HASH'
             and exists $r->{default}
             and !exists $data->{$k} )
@@ -1067,7 +1069,7 @@ sub _validate_type_string {
         and $value * 0 == 0 )
     {
         return E $path, [ string => type => data_type $value]
-          unless $self->coerce->{strings};
+          unless $self->should_coerce('strings');
         $_[1] = "$value";    # coerce input value
     }
     if ( $schema->{format} ) {
@@ -1272,6 +1274,8 @@ Proxy attribtue for L<JSON::Validator::Store/cache_paths>.
     $jv->coerce( { booleans => 1 } );
 
     my $hash_ref = $jv->coerce;
+
+    $jv->should_coerce('numbers');  # preferred to $jv->coerce->{numbers}
 
 Also accepts a comma-separated list:
 
