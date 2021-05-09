@@ -33,11 +33,8 @@ sub allow_invalid_ref {
   return $self;
 }
 
-sub coerce {
-  my $self = shift;
-  return $self->SUPER::coerce(@_) if @_;
-  $self->{coerce} ||= {booleans => 1, numbers => 1, strings => 1};
-  return $self->{coerce};
+sub _build_coerce {
+    return {booleans => 1, numbers => 1, strings => 1};
 }
 
 sub data {
@@ -54,11 +51,6 @@ sub data {
 
   delete $self->{errors};
   return $self;
-}
-
-sub BUILD {
-    my ( $self, $args ) = @_;
-    $self->coerce;    # make sure this attribute is built
 }
 
 sub parameters_for_request {

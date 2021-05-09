@@ -23,7 +23,7 @@ Sub::Install::install_sub(
     code => JSON::Validator::Schema::OpenAPIv2->can($_),
     as   => $_,
   }
-) for qw(coerce routes validate_request validate_response),
+) for qw(_build_coerce routes validate_request validate_response),
   qw(_coerce_arrays _coerce_default_value _find_all_nodes _prefix_error_path _validate_request_or_response);
 
 sub BUILD {

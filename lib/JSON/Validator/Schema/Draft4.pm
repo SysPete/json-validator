@@ -170,7 +170,7 @@ sub _validate_type_object_properties {
   for my $k (keys %{$schema->{properties} || {}}) {
     my $r = $schema->{properties}{$k};
     push @{$rules{$k}}, $r;
-    if ($self->{coerce}{defaults} and ref $r eq 'HASH' and exists $r->{default} and !exists $data->{$k}) {
+    if ($self->coerce->{defaults} and ref $r eq 'HASH' and exists $r->{default} and !exists $data->{$k}) {
       $data->{$k} = $r->{default};
     }
   }

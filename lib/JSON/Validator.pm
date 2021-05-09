@@ -15,7 +15,21 @@ use List::Util qw(uniq);
 use Mojo::URL;
 use Path::Tiny;
 use Scalar::Util qw(blessed refaddr);
-use Sub::Install;
+use Type::Params qw(compile);
+use Types::Standard qw(
+  Any
+  ArrayRef
+  Bool
+  Dict
+  Enum
+  HashRef
+  InstanceOf
+  Map
+  Object
+  Optional
+  Str
+);
+use URI;
 
 use constant RECURSION_LIMIT => $ENV{JSON_VALIDATOR_RECURSION_LIMIT} || 100;
 
@@ -57,22 +71,17 @@ has store => (
         my %attrs;
         $attrs{$_} = delete $self->{$_} for grep { $self->{$_} } qw(cache_paths ua);
         return JSON::Validator::Store->new(%attrs);
-    }
+    },
+    handles => [qw/ cache_paths ua /],
 );
 
 my $encoder = JSON->new->allow_nonref;
 
-for my $method (qw(cache_paths ua)) {
-  Sub::Install::install_sub(
-    {
-      code => sub { shift->store->$method(@_) },
-      as   => $method,
-    }
-  );
-}
+my $check_bundle = compile(Object,
+  Optional [Dict [schema => HashRef | InstanceOf ['JSON::Validator::Schema'], replace => Optional [Bool]]]);
 
 sub bundle {
-  my ($self, $args) = @_;
+  my ($self, $args) = $check_bundle->(@_);
   my $cloner;
 
   my $get_data  = $self->can('data') ? 'data' : 'schema';
@@ -140,22 +149,45 @@ sub bundle {
   return $bundle;
 }
 
-my $short = {bool => 'booleans', def => 'defaults', num => 'numbers', str => 'strings'};
-sub coerce {
-  my $self = shift;
-  return $self->{coerce} ||= {} unless defined(my $what = shift);
+my %short_coercions = (bool => 'booleans', def => 'defaults', num => 'numbers', str => 'strings');
 
-  if ($what eq '1') {
-    warn('coerce(1) will be deprecated.');
-    $what = {booleans => 1, numbers => 1, strings => 1};
-  }
+has coerce => (
+    is  => 'rw',
+    isa => Map->of(Enum [values %short_coercions], Bool)->plus_coercions(
 
-  $what                                 = {map { ($_ => 1) } split /,/, $what} unless ref $what;
-  $self->{coerce}                       = {};
-  $self->{coerce}{($short->{$_} || $_)} = $what->{$_} for keys %$what;
+        # back-compat single bool true arg
+        Enum [1],
+        sub {
+            warn('coerce(1) will be deprecated.');
+            return {booleans => 1, numbers => 1, strings => 1};
+        },
 
-  return $self;
+        # back-compat CSV
+        Str,
+        sub {
+            return {map { $_ => 1 } map { $short_coercions{$_} ? $short_coercions{$_} : $_ } split(/,/, $_)};
+        }
+    ),
+    handles_via => 'Hash',
+    coerce      => 1,
+    lazy        => 1,
+    builder     => '_build_coerce',
+    handles     => {should_coerce => 'get',},
+);
+
+sub _build_coerce {
+    return +{};
 }
+
+around coerce => sub {
+    my ($orig, $self, @args) = @_;
+
+    # allow hashref
+    my $ret = @args > 1 ? $self->$orig({@args}) : $self->$orig(@args);
+
+    # Mojo back-compat: mutators return $self
+    return @args ? $self : $ret;
+};
 
 sub get { JSON::Validator::Util::schema_extract(shift->schema->data, shift) }
 
@@ -170,11 +202,6 @@ sub load_and_validate_schema {
 
   $self->{schema} = $schema_obj;
   return $self;
-}
-
-sub BUILD {
-    my ( $self, $args ) = @_;
-    $self->coerce($args->{coerce}) if defined $args->{coerce};
 }
 
 sub schema {
@@ -246,7 +273,7 @@ sub _definitions_path {
   }
 
   # Generate definitions key based on filename
-  my $fqn = Mojo::URL->new($ref->fqn);
+  my $fqn = URI->new($ref->fqn);
   my $key = $fqn->fragment;
   if ($fqn->scheme and $fqn->scheme eq 'file') {
     $key = join '-', map { s!^\W+!!; $_ } grep {$_} path($fqn->path)->basename, $key,
@@ -294,6 +321,9 @@ sub _find_and_resolve_refs {
   }
 
   while (@refs) {
+    # my $base_url stomps on $base_url from outer scope, but this appears
+    # unintentional below, where we see:
+    #   $base_url || $base_url
     my ($base_url, $topic) = @{shift @refs};
     next if is_type $topic, 'BOOL';
     next if !$topic->{'$ref'} or ref $topic->{'$ref'};
@@ -388,7 +418,7 @@ sub _resolve {
   $cached_id //= '';
   $id = Mojo::URL->new("$id");
   $self->_register_root_schema($id => $resolved) if !$nested and "$id";
-  $self->store->add($id => $resolved)            if "$id"    and "$id" ne $cached_id;
+  $self->store->add($id => $resolved)            if "$id" and "$id" ne $cached_id;
   $self->_find_and_resolve_refs($id => $resolved) unless $cached_id;
 
   return $resolved;
@@ -451,7 +481,7 @@ sub _schema_class {
       into => $package,
       as => $_,
     }
-  ) for qw(_register_root_schema bundle contains data errors get id new resolve specification validate);;
+  ) for qw(_register_root_schema bundle contains data errors get id new resolve specification validate);
   return $package;
 }
 
@@ -562,7 +592,7 @@ sub _validate_any_of {
   my $i = 0;
   for my $rule (@$rules) {
     return unless my @e = $self->_validate($_[1], $path, $rule);
-    push @errors,             @e;
+    push @errors, @e;
     push @errors_with_prefix, [$i, @e];
   }
   continue {
@@ -740,7 +770,7 @@ sub _validate_type_boolean {
   my ($self, $value, $path, $schema) = @_;
 
   # String that looks like a boolean
-  if (defined $value and $self->{coerce}{booleans}) {
+  if (defined $value and $self->coerce->{booleans}) {
     $_[1] = JSON->false if $value =~ m!^(0|false|)$!;
     $_[1] = JSON->true  if $value =~ m!^(1|true)$!;
   }
@@ -754,7 +784,7 @@ sub _validate_type_integer {
   my @errors = $self->_validate_type_number($_[1], $path, $schema, 'integer');
 
   return @errors if @errors;
-  return         if $value =~ /^-?\d+$/;
+  return          if $value =~ /^-?\d+$/;
   return E $path, [integer => type => data_type $value];
 }
 
@@ -776,7 +806,7 @@ sub _validate_type_number {
   }
   unless (is_type $value, 'NUM') {
     return E $path, [$expected => type => data_type $value]
-      if !$self->{coerce}{numbers} or $value !~ /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+      if !$self->coerce->{numbers} or $value !~ /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
     $_[1] = 0 + $value;    # coerce input value
   }
 
@@ -814,7 +844,7 @@ sub _validate_type_object {
   for my $k (keys %{$schema->{properties} || {}}) {
     my $r = $schema->{properties}{$k};
     push @{$rules{$k}}, $r;
-    if ($self->{coerce}{defaults} and ref $r eq 'HASH' and exists $r->{default} and !exists $data->{$k}) {
+    if ($self->coerce->{defaults} and ref $r eq 'HASH' and exists $r->{default} and !exists $data->{$k}) {
       $data->{$k} = $r->{default};
     }
   }
@@ -879,7 +909,7 @@ sub _validate_type_string {
     return E $path, [string => type => data_type $value];
   }
   if (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return E $path, [string => type => data_type $value] unless $self->{coerce}{strings};
+    return E $path, [string => type => data_type $value] unless $self->coerce->{strings};
     $_[1] = "$value";    # coerce input value
   }
   if ($schema->{format}) {
