@@ -16,7 +16,7 @@ has enum                                   => sub { +[] };
 has [qw(format max min multiple_of regex)] => undef;
 has type                                   => 'object';
 has validator =>
-  sub { JSON::Validator->new->coerce('booleans,numbers,strings') };
+  sub { JSON::Validator->new(coerce=> 'booleans,numbers,strings') };
 
 for my $attr (qw(required strict unique)) {
     Sub::Install::install_sub(

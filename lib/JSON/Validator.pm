@@ -1,7 +1,6 @@
 package JSON::Validator;
 use Moo;
 use MooX::TypeTiny;
-use Exporter 'import';
 
 use Carp qw(confess);
 use Data::Dumper ();
@@ -36,8 +35,7 @@ use URI;
 
 use constant RECURSION_LIMIT => $ENV{JSON_VALIDATOR_RECURSION_LIMIT} || 100;
 
-our $VERSION   = '4.16';
-our @EXPORT_OK = qw(joi validate_json);
+our $VERSION = '4.16';
 
 our %SCHEMAS = (
     'http://json-schema.org/draft-04/schema#'             => '+Draft4',
@@ -58,13 +56,6 @@ has recursive_data_protection => (
     is      => 'rw',
     default => 1,
 );
-
-# Mojo mutators return $self
-around recursive_data_protection => sub {
-    my ( $orig, $self, @args ) = @_;
-    my $ret = $self->$orig(@args);
-    return @args ? $self : $ret;
-};
 
 has store => (
     is      => 'rw',
@@ -209,15 +200,6 @@ has coerce => (
 sub _build_coerce {
     return +{};
 }
-
-around coerce => sub {
-    my ( $orig, $self, @args ) = @_;
-
-    my $ret = $self->$orig(@args);
-
-    # Mojo back-compat: mutators return $self
-    return @args ? $self : $ret;
-};
 
 sub get {
     JSON::Validator::Util::schema_extract( shift->schema->data, shift );
@@ -1128,25 +1110,6 @@ JSON::Validator - Validate data against a JSON schema
   # Do something if any errors was found
   die "@errors" if @errors;
 
-  # Use joi() to build the schema
-  use JSON::Validator 'joi';
-
-  $jv->schema(joi->object->props({
-    firstName => joi->string->required,
-    lastName  => joi->string->required,
-    age       => joi->integer->min(0),
-  }));
-
-  # joi() can also validate directly
-  my @errors = joi(
-    {firstName => "Jan Henning", lastName => "Thorsen", age => -42},
-    joi->object->props({
-      firstName => joi->string->required,
-      lastName  => joi->string->required,
-      age       => joi->integer->min(0),
-    }),
-  );
-
 =head1 DESCRIPTION
 
 L<JSON::Validator> is a data structure validation library based around
@@ -1246,18 +1209,8 @@ to do validation of specific "format", such as "hostname", "ipv4" and others.
 
 =head1 ERROR OBJECT
 
-The methods L</validate> and the function L</validate_json> returns a list of
+The method L</validate> returns a list of
 L<JSON::Validator::Error> objects when the input data violates the L</schema>.
-
-=head1 FUNCTIONS
-
-=head2 joi
-
-DEPRECATED.
-
-=head2 validate_json
-
-DEPRECATED.
 
 =head1 ATTRIBUTES
 
