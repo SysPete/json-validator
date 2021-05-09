@@ -13,6 +13,7 @@ requires 'MIME::Base64';
 requires 'Moo' => '2.000000';
 requires 'namespace::clean';
 requires 'Path::Tiny';
+requires 'Sub::HandlesVia';
 requires 'Sub::Install';
 requires 'Throwable';
 requires 'URI';
