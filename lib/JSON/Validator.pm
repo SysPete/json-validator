@@ -154,7 +154,8 @@ sub bundle {
         }
         elsif ( ref $from eq 'HASH' ) {
             for my $key ( keys %$from ) {
-                $to->{$key} //= $cloner->( $from->{$key} );
+                $to->{$key} = $cloner->( $from->{$key} )
+                  unless defined $to->{$key};
             }
         }
     }
@@ -232,7 +233,8 @@ sub schema {
 
 sub validate {
     my ( $self, $data, $schema ) = @_;
-    $schema //= $self->schema->data;
+    $schema = $self->schema->data
+      unless defined $schema;
     return E '/', 'No validation rules defined.' unless defined $schema;
 
     local $self->{schema} = $self->_new_schema($schema);
@@ -444,20 +446,21 @@ sub _resolve {
 
     my ( $id_key, $id, $cached_id, $resolved ) = ( $self->_id_key );
     if ( ref $schema eq 'HASH' ) {
-        $id        = $schema->{$id_key} // '';
+        $id        = defined $schema->{$id_key} ? $schema->{$id_key} : '';
         $cached_id = $self->store->exists($id);
         $resolved  = $cached_id ? $self->store->get($cached_id) : $schema;
     }
     else {
         $cached_id = $self->store->exists($id);
-        $id        = $cached_id // $self->store->load($schema);
-        $resolved  = $self->store->get($id);
-        $id        = $resolved->{$id_key}
+        $id = defined $cached_id ? $cached_id : $self->store->load($schema);
+        $resolved = $self->store->get($id);
+        $id       = $resolved->{$id_key}
           if is_type( $resolved, 'HASH' )
           and $resolved->{$id_key};
     }
 
-    $cached_id //= '';
+    $cached_id = ''
+      unless defined $cached_id;
     $id = Mojo::URL->new("$id");
     $self->_register_root_schema( $id => $resolved ) if !$nested and "$id";
     $self->store->add( $id => $resolved ) if "$id" and "$id" ne $cached_id;
@@ -474,12 +477,15 @@ sub _resolve_ref {
     my $pointer = $fqn->fragment;
     my $other;
 
-    $fqn = $fqn->to_abs($base_url) if "$base_url";
-    $other //= $self->store->get($fqn);
-    $other //= $self->store->get( $fqn->clone->fragment(undef) );
-    $other //= $self->_resolve( $fqn->clone->fragment(undef), 1 )
-      if $fqn->is_abs && $fqn ne $base_url;
-    $other //= $schema;
+    $fqn   = $fqn->to_abs($base_url) if "$base_url";
+    $other = $self->store->get($fqn)
+      unless defined $other;
+    $other = $self->store->get( $fqn->clone->fragment(undef) )
+      unless defined $other;
+    $other = $self->_resolve( $fqn->clone->fragment(undef), 1 )
+      if !defined $other && $fqn->is_abs && $fqn ne $base_url;
+    $other = $schema
+      unless defined $other;
 
     if ( defined $pointer and $pointer =~ m!^/! ) {
         $other = JSON::Pointer->get( $other, $pointer );
@@ -488,7 +494,7 @@ sub _resolve_ref {
           unless defined $other;
     }
 
-    $fqn->fragment( $pointer // '' );
+    $fqn->fragment( defined $pointer ? $pointer : '' );
     return $other, $ref_url, $fqn;
 }
 
@@ -574,7 +580,8 @@ sub _validate {
           = !$schema->{if} || $self->_validate( $_[1], $path, $schema->{if} )
           ? $schema->{else}
           : $schema->{then};
-        push @errors, $self->_validate( $_[1], $path, $rules // {} );
+        push @errors,
+          $self->_validate( $_[1], $path, defined $rules ? $rules : {} );
     }
 
     my $type = $schema->{type} || schema_type $schema, $_[1];
@@ -714,7 +721,10 @@ sub _validate_number_max {
     my ( $self, $value, $path, $schema, $expected ) = @_;
     my @errors;
 
-    my $cmp_with = $schema->{exclusiveMaximum} // '';
+    my $cmp_with
+      = defined $schema->{exclusiveMaximum}
+      ? $schema->{exclusiveMaximum}
+      : '';
     if ( is_type $cmp_with, 'BOOL' ) {
         push @errors, E $path,
           [ $expected => ex_maximum => $value, $schema->{maximum} ]
@@ -739,7 +749,10 @@ sub _validate_number_min {
     my ( $self, $value, $path, $schema, $expected ) = @_;
     my @errors;
 
-    my $cmp_with = $schema->{exclusiveMinimum} // '';
+    my $cmp_with
+      = defined $schema->{exclusiveMinimum}
+      ? $schema->{exclusiveMinimum}
+      : '';
     if ( is_type $cmp_with, 'BOOL' ) {
         push @errors, E $path,
           [ $expected => ex_minimum => $value, $schema->{minimum} ]
@@ -832,8 +845,11 @@ sub _validate_type_array {
     }
 
     if ( ref $schema->{items} eq 'ARRAY' ) {
-        my $additional_items = $schema->{additionalItems} // {};
-        my @rules            = @{ $schema->{items} };
+        my $additional_items
+          = defined $schema->{additionalItems}
+          ? $schema->{additionalItems}
+          : {};
+        my @rules = @{ $schema->{items} };
 
         if ($additional_items) {
             push @rules, $additional_items while @rules < @$data;
