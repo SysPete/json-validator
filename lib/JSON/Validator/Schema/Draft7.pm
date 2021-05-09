@@ -1,5 +1,6 @@
 package JSON::Validator::Schema::Draft7;
 use Moo;
+use MooX::TypeTiny;
 extends 'JSON::Validator::Schema::Draft6';
 
 has specification => (

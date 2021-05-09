@@ -1,5 +1,6 @@
 package JSON::Validator::Schema::OpenAPIv3;
 use Moo;
+use MooX::TypeTiny;
 extends 'JSON::Validator::Schema::Draft201909';
 
 use Encode qw(decode);

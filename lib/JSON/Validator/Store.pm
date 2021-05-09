@@ -15,6 +15,7 @@ use constant BUNDLED_PATH =>
 use constant CASE_TOLERANT => File::Spec->case_tolerant;
 
 use Moo;
+use MooX::TypeTiny;
 with 'StackTrace::Auto';
 
 has cache_paths => (

@@ -4,6 +4,7 @@ use warnings;
 use strict;
 
 use Moo;
+use MooX::TypeTiny;
 use namespace::clean;
 
 use overload q("") => \&to_string, bool => sub {1}, fallback => 1;

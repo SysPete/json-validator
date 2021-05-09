@@ -11,6 +11,7 @@ requires 'JSON::MaybeXS';
 requires 'JSON::Pointer';
 requires 'MIME::Base64';
 requires 'Moo' => '2.000000';
+requires 'MooX::TypeTiny';
 requires 'namespace::clean';
 requires 'Path::Tiny';
 requires 'Sub::HandlesVia';

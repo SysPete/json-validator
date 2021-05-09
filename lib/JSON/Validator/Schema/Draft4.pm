@@ -1,5 +1,6 @@
 package JSON::Validator::Schema::Draft4;
 use Moo;
+use MooX::TypeTiny;
 extends 'JSON::Validator::Schema';
 
 use JSON::Validator::Util qw(E data_checksum data_type is_type json_pointer);

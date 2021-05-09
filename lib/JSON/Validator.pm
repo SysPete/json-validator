@@ -1,5 +1,6 @@
 package JSON::Validator;
 use Moo;
+use MooX::TypeTiny;
 use Exporter 'import';
 
 use Carp qw(confess);

@@ -1,5 +1,6 @@
 package JSON::Validator::Schema::OpenAPIv2;
 use Moo;
+use MooX::TypeTiny;
 extends 'JSON::Validator::Schema::Draft4';
 
 use JSON::Validator::Util qw(E data_type negotiate_content_type schema_type);
