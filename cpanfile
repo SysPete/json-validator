@@ -16,6 +16,7 @@ requires 'Path::Tiny';
 requires 'Sub::HandlesVia';
 requires 'Sub::Install';
 requires 'Throwable';
+requires 'Type::Tiny';
 requires 'URI';
 
 suggests 'Data::Validate::Domain';
