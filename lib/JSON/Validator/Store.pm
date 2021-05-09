@@ -95,7 +95,7 @@ sub _load_from_file {
 
   my $id = URI->new(CASE_TOLERANT ? lc $file : "$file", 'file');
 
-  # XXX Mojo::URL always prefixes with 'file:' but URL does not, and code elsewhere
+  # XXX Mojo::URL always prefixes with 'file:' but URI does not, and code elsewhere
   # assumes the prefix will be in place
   $id =~ s{^/}{file:///};
 
