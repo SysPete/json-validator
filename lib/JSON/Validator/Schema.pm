@@ -1,5 +1,6 @@
 package JSON::Validator::Schema;
 use Moo;
+use MooX::TypeTiny;
 extends 'JSON::Validator';
 
 use Carp 'carp';

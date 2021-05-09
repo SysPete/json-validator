@@ -1,5 +1,6 @@
 package JSON::Validator::Schema::Draft6;
 use Moo;
+use MooX::TypeTiny;
 extends 'JSON::Validator::Schema::Draft4';
 
 use JSON::Validator::Util qw(E data_type is_type prefix_errors);
