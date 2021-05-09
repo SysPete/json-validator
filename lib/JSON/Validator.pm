@@ -35,7 +35,7 @@ use URI;
 
 use constant RECURSION_LIMIT => $ENV{JSON_VALIDATOR_RECURSION_LIMIT} || 100;
 
-our $VERSION   = '4.16';
+our $VERSION = '4.16';
 
 our %SCHEMAS = (
     'http://json-schema.org/draft-04/schema#'             => '+Draft4',
@@ -56,13 +56,6 @@ has recursive_data_protection => (
     is      => 'rw',
     default => 1,
 );
-
-# Mojo mutators return $self
-around recursive_data_protection => sub {
-    my ( $orig, $self, @args ) = @_;
-    my $ret = $self->$orig(@args);
-    return @args ? $self : $ret;
-};
 
 has store => (
     is      => 'rw',
