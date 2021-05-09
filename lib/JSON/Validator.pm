@@ -1262,6 +1262,57 @@ DEPRECATED.
 
 Proxy attribtue for L<JSON::Validator::Store/cache_paths>.
 
+=head2 coerce
+
+    my $jv = JSON::Validator->new(
+        coerce => { booleans => 1, numbers => 1 },
+        ...
+    );
+
+    $jv->coerce( { booleans => 1 } );
+
+    my $hash_ref = $jv->coerce;
+
+Also accepts a comma-separated list:
+
+    $jv->coerce('booleans,defaults,numbers,strings');
+
+Which can also be abbreviated:
+
+    $jv->coerce('bool,def,num,str');
+
+Set the given types to coerce. Before enabling coercion this module is very
+strict when it comes to validating types. Example: The string C<"1"> is not
+the same as the number C<1>, unless you have "numbers" coercion enabled.
+
+=over
+
+=item * booleans
+
+Will convert what looks can be interpreted as a boolean (that is, an actual
+numeric C<1> or C<0>, and the strings "true" and "false") to a
+L<JSON::PP::Boolean> object. Note that "foo" is not considered a true value and
+will fail the validation.
+
+=item * defaults
+
+Will copy the default value defined in the schema, into the input structure,
+if the input value is non-existing.
+
+Note that support for "defaults" is currently EXPERIMENTAL, and enabling this
+might be changed in future versions.
+
+=item * numbers
+
+Will convert strings that looks like numbers, into true numbers. This works for
+both the "integer" and "number" types.
+
+=item * strings
+
+Will convert a number into a string. This works for the "string" type.
+
+=back
+
 =head2 formats
 
   my $hash_ref  = $jv->formats;
@@ -1314,44 +1365,6 @@ DEPRECATED.
 Used to create a new schema, where there are no "$ref" pointing to external
 resources. This means that all the "$ref" that are found, will be moved into
 the "definitions" key, in the returned C<$schema>.
-
-=head2 coerce
-
-  my $jv       = $jv->coerce('bool,def,num,str');
-  my $jv       = $jv->coerce('booleans,defaults,numbers,strings');
-  my $hash_ref = $jv->coerce;
-
-Set the given type to coerce. Before enabling coercion this module is very
-strict when it comes to validating types. Example: The string C<"1"> is not
-the same as the number C<1>, unless you have "numbers" coercion enabled.
-
-=over 2
-
-=item * booleans
-
-Will convert what looks can be interpreted as a boolean (that is, an actual
-numeric C<1> or C<0>, and the strings "true" and "false") to a
-L<JSON::PP::Boolean> object. Note that "foo" is not considered a true value and
-will fail the validation.
-
-=item * defaults
-
-Will copy the default value defined in the schema, into the input structure,
-if the input value is non-existing.
-
-Note that support for "default" is currently EXPERIMENTAL, and enabling this
-might be changed in future versions.
-
-=item * numbers
-
-Will convert strings that looks like numbers, into true numbers. This works for
-both the "integer" and "number" types.
-
-=item * strings
-
-Will convert a number into a string. This works for the "string" type.
-
-=back
 
 =head2 get
 
