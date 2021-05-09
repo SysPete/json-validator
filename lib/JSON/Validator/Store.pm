@@ -10,152 +10,161 @@ use Path::Tiny qw(cwd path);
 use URI;
 use URI::Escape qw(uri_unescape);
 
-use constant BUNDLED_PATH  => path(__FILE__)->parent->child('cache')->stringify;
+use constant BUNDLED_PATH =>
+  path(__FILE__)->parent->child('cache')->stringify;
 use constant CASE_TOLERANT => File::Spec->case_tolerant;
 
 use Moo;
 with 'StackTrace::Auto';
 
 has cache_paths => (
-  is      => 'rw',
-  lazy    => 1,
-  default => sub {
-    return [split(/:/, $ENV{JSON_VALIDATOR_CACHE_PATH} || ''), BUNDLED_PATH];
-  },
+    is      => 'rw',
+    lazy    => 1,
+    default => sub {
+        return [
+            split( /:/, $ENV{JSON_VALIDATOR_CACHE_PATH} || '' ),
+            BUNDLED_PATH
+        ];
+    },
 );
 
 has schemas => (
-  is      => 'rw',
-  default => sub { +{} },
+    is      => 'rw',
+    default => sub { +{} },
 );
 
 has ua => (
-  is      => 'rw',
-  lazy    => 1,
-  default => sub {
-    return HTTP::Tiny->new(
-        max_redirect => 3,
-    );
-  },
+    is      => 'rw',
+    lazy    => 1,
+    default => sub {
+        return HTTP::Tiny->new(
+            max_redirect => 3,
+        );
+    },
 );
 
 sub add {
-  my ($self, $id, $schema) = @_;
-  $id =~ s!(.)#$!$1!;
-  $self->schemas->{$id} = $schema;
-  return $id;
+    my ( $self, $id, $schema ) = @_;
+    $id =~ s!(.)#$!$1!;
+    $self->schemas->{$id} = $schema;
+    return $id;
 }
 
 sub exists {
-  my ($self, $id) = @_;
-  return undef unless defined $id;
-  $id =~ s!(.)#$!$1!;
-  return $self->schemas->{$id} && $id;
+    my ( $self, $id ) = @_;
+    return undef unless defined $id;
+    $id =~ s!(.)#$!$1!;
+    return $self->schemas->{$id} && $id;
 }
 
 sub get {
-  my ($self, $id) = @_;
-  return undef unless defined $id;
-  $id =~ s!(.)#$!$1!;
-  return $self->schemas->{$id};
+    my ( $self, $id ) = @_;
+    return undef unless defined $id;
+    $id =~ s!(.)#$!$1!;
+    return $self->schemas->{$id};
 }
 
 sub load {
-  my ($self, $source) = @_;
-  return
-       $self->_load_from_url($source)
-    || $self->_load_from_data($source)
-    || $self->_load_from_text($source)
-    || $self->_load_from_file($source)
-    || $self->get($source)
-    || $self->_raise("Unable to load schema $source");
+    my ( $self, $source ) = @_;
+    return
+         $self->_load_from_url($source)
+      || $self->_load_from_data($source)
+      || $self->_load_from_text($source)
+      || $self->_load_from_file($source)
+      || $self->get($source)
+      || $self->_raise("Unable to load schema $source");
 }
 
 sub _load_from_data {
-  my ($self, $url, $id) = @_;
+    my ( $self, $url, $id ) = @_;
 
-  return undef unless $url =~ m!^data://([^/]*)/(.*)!;
-  return $id if $id = $self->exists($url);
+    return undef unless $url =~ m!^data://([^/]*)/(.*)!;
+    return $id if $id = $self->exists($url);
 
-  my ($class, $file) = ($1, $2);    # data://([^/]*)/(.*)
-  my $text = data_section $class, $file, {encoding => 'UTF-8'};
-  $self->_raise("Could not find $url") unless $text;
-  return $self->add($url => $self->_parse($text));
+    my ( $class, $file ) = ( $1, $2 );    # data://([^/]*)/(.*)
+    my $text = data_section $class, $file, { encoding => 'UTF-8' };
+    $self->_raise("Could not find $url") unless $text;
+    return $self->add( $url => $self->_parse($text) );
 }
 
 sub _load_from_file {
-  my ($self, $file) = @_;
+    my ( $self, $file ) = @_;
 
-  $file =~ s!^file://!!;
-  $file =~ s!#$!!;
-  $file = $file ? path(uri_unescape($file)) : cwd;
-  return undef unless -e $file;
+    $file =~ s!^file://!!;
+    $file =~ s!#$!!;
+    $file = $file ? path( uri_unescape($file) ) : cwd;
+    return undef unless -e $file;
 
-  $file = $file->realpath;
+    $file = $file->realpath;
 
-  my $id = URI->new(CASE_TOLERANT ? lc $file : "$file", 'file');
+    my $id = URI->new( CASE_TOLERANT ? lc $file : "$file", 'file' );
 
-  # XXX Mojo::URL always prefixes with 'file:' but URI does not, and code elsewhere
-  # assumes the prefix will be in place
-  $id =~ s{^/}{file:///};
+# XXX Mojo::URL always prefixes with 'file:' but URI does not, and code elsewhere
+# assumes the prefix will be in place
+    $id =~ s{^/}{file:///};
 
-  return $self->exists($id) || $self->add($id => $self->_parse($file->slurp_utf8));
+    return $self->exists($id)
+      || $self->add( $id => $self->_parse( $file->slurp_utf8 ) );
 }
 
 sub _load_from_text {
-  my ($self, $text) = @_;
-  my $is_scalar_ref = ref $text eq 'SCALAR';
-  return undef unless $is_scalar_ref or $text =~ m!^\s*(?:---|\{)!s;
+    my ( $self, $text ) = @_;
+    my $is_scalar_ref = ref $text eq 'SCALAR';
+    return undef unless $is_scalar_ref or $text =~ m!^\s*(?:---|\{)!s;
 
-  my $id = sprintf 'urn:text:%s', md5_hex($is_scalar_ref ? $$text : $text);
-  return $self->exists($id) || $self->add($id => $self->_parse($is_scalar_ref ? $$text : $text));
+    my $id = sprintf 'urn:text:%s',
+      md5_hex( $is_scalar_ref ? $$text : $text );
+    return $self->exists($id)
+      || $self->add(
+        $id => $self->_parse( $is_scalar_ref ? $$text : $text ) );
 }
 
 sub _load_from_url {
-  my ($self, $url, $id) = @_;
+    my ( $self, $url, $id ) = @_;
 
-  return undef unless $url =~ m!^https?://!;
-  return $id if $id = $self->exists($url);
+    return undef unless $url =~ m!^https?://!;
+    return $id if $id = $self->exists($url);
 
-  $url = Mojo::URL->new($url)->fragment(undef);
-  return $id if $id = $self->exists($url);
+    $url = Mojo::URL->new($url)->fragment(undef);
+    return $id if $id = $self->exists($url);
 
-  my $cache_path = $self->cache_paths->[0];
-  my $cache_file = md5_hex("$url");
-  for (@{$self->cache_paths}) {
-    my $path = path( $_, $cache_file );
-    return $self->add($url => $self->_parse($path->slurp)) if -r $path;
-  }
-
-  my $response = $self->ua->get($url);
-  my $content;
-
-  if ( $self->ua->isa("Mojo::UserAgent") ) {
-      my $err = $response->error && $response->error->{message};
-      $self->_raise($err) if $err;
-
-      $content = $response->res->body;
-  }
-  else {
-    # Assume HTTP::Tiny
-    unless ( $response->{success} ) {
-      $self->_raise($response->{reason});
+    my $cache_path = $self->cache_paths->[0];
+    my $cache_file = md5_hex("$url");
+    for ( @{ $self->cache_paths } ) {
+        my $path = path( $_, $cache_file );
+        return $self->add( $url => $self->_parse( $path->slurp ) )
+          if -r $path;
     }
-      $content = $response->{content};
-  }
 
-  if ($cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path) {
-    $cache_file = path( $cache_path, $cache_file );
-    $cache_file->spew_utf8($content);
-  }
+    my $response = $self->ua->get($url);
+    my $content;
 
-  return $self->add($url => $self->_parse($content));
+    if ( $self->ua->isa("Mojo::UserAgent") ) {
+        my $err = $response->error && $response->error->{message};
+        $self->_raise($err) if $err;
+
+        $content = $response->res->body;
+    }
+    else {
+        # Assume HTTP::Tiny
+        unless ( $response->{success} ) {
+            $self->_raise( $response->{reason} );
+        }
+        $content = $response->{content};
+    }
+
+    if ( $cache_path and $cache_path ne BUNDLED_PATH and -w $cache_path ) {
+        $cache_file = path( $cache_path, $cache_file );
+        $cache_file->spew_utf8($content);
+    }
+
+    return $self->add( $url => $self->_parse($content) );
 }
 
 sub _parse {
-  my ($self, $json) = @_;
-  return JSON::MaybeXS::decode_json($json) if $json =~ m!^\s*\{!s;
-  return JSON::Validator::Util::_yaml_load($json);
+    my ( $self, $json ) = @_;
+    return JSON::MaybeXS::decode_json($json) if $json =~ m!^\s*\{!s;
+    return JSON::Validator::Util::_yaml_load($json);
 }
 
 sub _raise { my $self = shift; die @_, $self->stack_trace->as_string }

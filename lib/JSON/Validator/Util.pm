@@ -13,11 +13,12 @@ use JSON::Validator::Util::Loader;
 use List::Util;
 use Scalar::Util 'blessed';
 
-use constant SEREAL_SUPPORT => !$ENV{JSON_VALIDATOR_NO_SEREAL} && eval 'use Sereal::Encoder 4.00;1';
+use constant SEREAL_SUPPORT => !$ENV{JSON_VALIDATOR_NO_SEREAL}
+  && eval 'use Sereal::Encoder 4.00;1';
 
 our @EXPORT_OK = (
-  qw(E data_checksum data_section data_type is_type negotiate_content_type),
-  qw(schema_extract json_pointer prefix_errors schema_type),
+    qw(E data_checksum data_section data_type is_type negotiate_content_type),
+    qw(schema_extract json_pointer prefix_errors schema_type),
 );
 
 sub E { JSON::Validator::Error->new(@_) }
@@ -25,216 +26,263 @@ sub E { JSON::Validator::Error->new(@_) }
 my $serializer = SEREAL_SUPPORT ? \&_sereal_encode : \&_yaml_dump;
 
 sub data_checksum {
-  return md5_hex(ref $_[0] ? $serializer->($_[0]) : defined $_[0] ? qq('$_[0]') : 'undef');
+    return md5_hex(
+          ref $_[0]     ? $serializer->( $_[0] )
+        : defined $_[0] ? qq('$_[0]')
+        :                 'undef'
+    );
 }
 
-my $data_section_skip_re = qr{(^JSON::Validator|^Mojo::Base$|^Mojolicious$|\w+::_Dynamic)};
+my $data_section_skip_re
+  = qr{(^JSON::Validator|^Mojo::Base$|^Mojolicious$|\w+::_Dynamic)};
+
 sub data_section {
-  my ($class, $file, $params) = @_;
+    my ( $class, $file, $params ) = @_;
 
-  my @classes = $class ? ([$class]) : ();
-  unless (@classes) {
-    my $i = 0;
-    while ($class = caller($i++)) {
-      push @classes, [$class] unless $class =~ $data_section_skip_re;
+    my @classes = $class ? ( [$class] ) : ();
+    unless (@classes) {
+        my $i = 0;
+        while ( $class = caller( $i++ ) ) {
+            push @classes, [$class] unless $class =~ $data_section_skip_re;
+        }
     }
-  }
 
-  for my $group (@classes) {
-    push @$group, grep { !/$data_section_skip_re/ } do { no strict 'refs'; @{"$group->[0]\::ISA"} };
-    for my $class (@$group) {
-      next unless my $text = JSON::Validator::Util::Loader::data_section($class, $file);
-      return Encode::encode($params->{encoding}, $text) if $params->{encoding};
-      return $text;
+    for my $group (@classes) {
+        push @$group,
+          grep { !/$data_section_skip_re/ }
+          do { no strict 'refs'; @{"$group->[0]\::ISA"} };
+        for my $class (@$group) {
+            next
+              unless my $text
+              = JSON::Validator::Util::Loader::data_section( $class, $file );
+            return Encode::encode( $params->{encoding}, $text )
+              if $params->{encoding};
+            return $text;
+        }
     }
-  }
 
-  return undef unless $params->{confess};
+    return undef unless $params->{confess};
 
-  my $err = JSON::MaybeXS::encode_json([map { @$_ == 1 ? $_->[0] : $_ } @classes]);
-  Carp::confess(qq(Could not find "$file" in __DATA__ section of $err.));
+    my $err = JSON::MaybeXS::encode_json(
+        [ map { @$_ == 1 ? $_->[0] : $_ } @classes ] );
+    Carp::confess(qq(Could not find "$file" in __DATA__ section of $err.));
 }
 
 sub data_type {
-  my $ref     = ref $_[0];
-  my $blessed = blessed $_[0];
-  return 'object'  if $ref eq 'HASH';
-  return lc $ref   if $ref and !$blessed;
-  return 'null'    if !defined $_[0];
-  return 'boolean' if $blessed and ("$_[0]" eq "1" or !"$_[0]");
+    my $ref     = ref $_[0];
+    my $blessed = blessed $_[0];
+    return 'object'  if $ref eq 'HASH';
+    return lc $ref   if $ref and !$blessed;
+    return 'null'    if !defined $_[0];
+    return 'boolean' if $blessed and ( "$_[0]" eq "1" or !"$_[0]" );
 
-  if (is_type($_[0], 'NUM')) {
-    return 'integer' if grep { ($_->{type} // '') eq 'integer' } @{$_[1] || []};
-    return 'number';
-  }
+    if ( is_type( $_[0], 'NUM' ) ) {
+        return 'integer'
+          if grep { ( $_->{type} // '' ) eq 'integer' } @{ $_[1] || [] };
+        return 'number';
+    }
 
-  return $blessed || 'string';
+    return $blessed || 'string';
 }
 
 sub is_type {
-  my $type = $_[1];
+    my $type = $_[1];
 
-  if ($type eq 'BOOL') {
-    return blessed $_[0] && ($_[0]->isa('JSON::PP::Boolean') || "$_[0]" eq "1" || !$_[0]);
-  }
+    if ( $type eq 'BOOL' ) {
+        return blessed $_[0]
+          && ( $_[0]->isa('JSON::PP::Boolean') || "$_[0]" eq "1" || !$_[0] );
+    }
 
-  # NUM
-  if ($type eq 'NUM') {
-    return B::svref_2object(\$_[0])->FLAGS & (B::SVp_IOK | B::SVp_NOK) && 0 + $_[0] eq $_[0] && $_[0] * 0 == 0;
-  }
+    # NUM
+    if ( $type eq 'NUM' ) {
+        return
+             B::svref_2object( \$_[0] )->FLAGS & ( B::SVp_IOK | B::SVp_NOK )
+          && 0 + $_[0] eq $_[0]
+          && $_[0] * 0 == 0;
+    }
 
-  # Class or data type
-  return blessed $_[0] ? $_[0]->isa($type) : ref $_[0] eq $type;
+    # Class or data type
+    return blessed $_[0] ? $_[0]->isa($type) : ref $_[0] eq $type;
 }
 
 sub negotiate_content_type {
-  my ($accepts, $header) = @_;
-  return '' unless $header;
+    my ( $accepts, $header ) = @_;
+    return '' unless $header;
 
-  my %header_map;
-  /^\s*([^,; ]+)(?:\s*\;\s*q\s*=\s*(\d+(?:\.\d+)?))?\s*$/i and $header_map{lc $1} = $2 // 1 for split /,/, $header;
-  my @headers = sort { $header_map{$b} <=> $header_map{$a} } sort keys %header_map;
+    my %header_map;
+    /^\s*([^,; ]+)(?:\s*\;\s*q\s*=\s*(\d+(?:\.\d+)?))?\s*$/i
+      and $header_map{ lc $1 } = $2 // 1
+      for split /,/, $header;
+    my @headers
+      = sort { $header_map{$b} <=> $header_map{$a} } sort keys %header_map;
 
-  # Check for exact match
-  for my $ct (@$accepts) {
-    return $ct if $header_map{$ct};
-  }
-
-  # Check for closest match
-  for my $re (map { my $re = "$_"; $re =~ s!\*!.*!g; $re = qr{$re}; [$_, $re] } grep {/\*/} @$accepts) {
-    for my $ct (@headers) {
-      return $re->[0] if $ct =~ $re->[1];
-    }
-  }
-  for my $re (map { local $_ = "$_"; s!\*!.*!g; qr{$_} } grep {/\*/} @headers) {
+    # Check for exact match
     for my $ct (@$accepts) {
-      return $ct if $ct =~ $re;
+        return $ct if $header_map{$ct};
     }
-  }
 
-  # Could not find any valid content type
-  return '';
+    # Check for closest match
+    for my $re (
+        map { my $re = "$_"; $re =~ s!\*!.*!g; $re = qr{$re}; [ $_, $re ] }
+        grep {/\*/} @$accepts
+      )
+    {
+        for my $ct (@headers) {
+            return $re->[0] if $ct =~ $re->[1];
+        }
+    }
+    for my $re (
+        map  { local $_ = "$_"; s!\*!.*!g; qr{$_} }
+        grep {/\*/} @headers
+      )
+    {
+        for my $ct (@$accepts) {
+            return $ct if $ct =~ $re;
+        }
+    }
+
+    # Could not find any valid content type
+    return '';
 }
 
 sub schema_extract {
-  my ($data, $p, $cb) = @_;
-  $p = [ref $p ? @$p : length $p ? split('/', $p, -1) : $p];
-  shift @$p if @$p and defined $p->[0] and !length $p->[0];
-  _schema_extract($data, $p, '', $cb);
+    my ( $data, $p, $cb ) = @_;
+    $p = [ ref $p ? @$p : length $p ? split( '/', $p, -1 ) : $p ];
+    shift @$p if @$p and defined $p->[0] and !length $p->[0];
+    _schema_extract( $data, $p, '', $cb );
 }
 
 sub json_pointer {
-  local $_ = $_[1];
-  s!~!~0!g;
-  s!/!~1!g;
-  "$_[0]/$_";
+    local $_ = $_[1];
+    s!~!~0!g;
+    s!/!~1!g;
+    "$_[0]/$_";
 }
 
 sub prefix_errors {
-  my ($type, @errors_with_index) = @_;
-  my @errors;
+    my ( $type, @errors_with_index ) = @_;
+    my @errors;
 
-  for my $e (@errors_with_index) {
-    my $index = shift @$e;
-    push @errors, map {
-      my $msg = sprintf '/%s/%s %s', $type, $index, $_->message;
-      $msg =~ s!(\d+)\s/!$1/!g;
-      E +{%$_, message => $msg};    # preserve 'details', for later introspection
-    } @$e;
-  }
+    for my $e (@errors_with_index) {
+        my $index = shift @$e;
+        push @errors, map {
+            my $msg = sprintf '/%s/%s %s', $type, $index, $_->message;
+            $msg =~ s!(\d+)\s/!$1/!g;
+            E +{ %$_, message =>
+                  $msg };    # preserve 'details', for later introspection
+        } @$e;
+    }
 
-  return @errors;
+    return @errors;
 }
 
 sub schema_type {
-  return ''                              if ref $_[0] ne 'HASH';
-  return $_[0]->{type}                   if $_[0]->{type};
-  return _guessed_right(object => $_[1]) if $_[0]->{additionalProperties};
-  return _guessed_right(object => $_[1]) if $_[0]->{patternProperties};
-  return _guessed_right(object => $_[1]) if $_[0]->{properties};
-  return _guessed_right(object => $_[1]) if exists $_[0]->{propertyNames};
-  return _guessed_right(object => $_[1]) if $_[0]->{required};
-  return _guessed_right(object => $_[1])
-    if $_[0]->{dependencies}
-    or $_[0]->{dependentSchemas}
-    or $_[0]->{dependentRequired};
-  return _guessed_right(object => $_[1]) if defined $_[0]->{maxProperties} or defined $_[0]->{minProperties};
+    return '' if ref $_[0] ne 'HASH';
+    return $_[0]->{type} if $_[0]->{type};
+    return _guessed_right( object => $_[1] ) if $_[0]->{additionalProperties};
+    return _guessed_right( object => $_[1] ) if $_[0]->{patternProperties};
+    return _guessed_right( object => $_[1] ) if $_[0]->{properties};
+    return _guessed_right( object => $_[1] ) if exists $_[0]->{propertyNames};
+    return _guessed_right( object => $_[1] ) if $_[0]->{required};
+    return _guessed_right( object => $_[1] )
+      if $_[0]->{dependencies}
+      or $_[0]->{dependentSchemas}
+      or $_[0]->{dependentRequired};
+    return _guessed_right( object => $_[1] )
+      if defined $_[0]->{maxProperties}
+      or defined $_[0]->{minProperties};
 
-  # additionalItems is intentionally omitted - it requires 'items' to take effect
-  return _guessed_right(array  => $_[1]) if exists $_[0]->{items};
-  return _guessed_right(array  => $_[1]) if $_[0]->{uniqueItems};
-  return _guessed_right(array  => $_[1]) if exists $_[0]->{contains};
-  return _guessed_right(array  => $_[1]) if exists $_[0]->{maxItems} or exists $_[0]->{minItems};
-  return _guessed_right(string => $_[1]) if $_[0]->{pattern};
-  return _guessed_right(string => $_[1]) if exists $_[0]->{maxLength} or defined $_[0]->{minLength};
-  return _guessed_right(number => $_[1]) if $_[0]->{multipleOf};
-  return _guessed_right(number => $_[1])
-    if defined $_[0]->{maximum}
-    or defined $_[0]->{minimum}
-    or defined $_[0]->{exclusiveMaximum}
-    or defined $_[0]->{exclusiveMinimum};
-  return 'const' if exists $_[0]->{const};
-  return '';
+# additionalItems is intentionally omitted - it requires 'items' to take effect
+    return _guessed_right( array => $_[1] ) if exists $_[0]->{items};
+    return _guessed_right( array => $_[1] ) if $_[0]->{uniqueItems};
+    return _guessed_right( array => $_[1] ) if exists $_[0]->{contains};
+    return _guessed_right( array => $_[1] )
+      if exists $_[0]->{maxItems}
+      or exists $_[0]->{minItems};
+    return _guessed_right( string => $_[1] ) if $_[0]->{pattern};
+    return _guessed_right( string => $_[1] )
+      if exists $_[0]->{maxLength}
+      or defined $_[0]->{minLength};
+    return _guessed_right( number => $_[1] ) if $_[0]->{multipleOf};
+    return _guessed_right( number => $_[1] )
+      if defined $_[0]->{maximum}
+      or defined $_[0]->{minimum}
+      or defined $_[0]->{exclusiveMaximum}
+      or defined $_[0]->{exclusiveMinimum};
+    return 'const' if exists $_[0]->{const};
+    return '';
 }
 
 # _guessed_right($type, $data);
 sub _guessed_right {
-  return $_[0] if !defined $_[1];
-  return $_[0] if $_[0] eq data_type $_[1], [{type => $_[0]}];
-  return '';
+    return $_[0] if !defined $_[1];
+    return $_[0] if $_[0] eq data_type $_[1], [ { type => $_[0] } ];
+    return '';
 }
 
 sub _schema_extract {
-  my ($data, $path, $pos, $cb) = @_, my $tied;
+    my ( $data, $path, $pos, $cb ) = @_, my $tied;
 
-  while (@$path) {
-    my $p = shift @$path;
+    while (@$path) {
+        my $p = shift @$path;
 
-    unless (defined $p) {
-      my $i = 0;
-      return [map { _schema_extract($_->[0], [@$path], json_pointer($pos, $_->[1]), $cb) }
-          ref $data eq 'ARRAY' ? map { [$_, $i++] }
-          @$data : ref $data eq 'HASH' ? map { [$data->{$_}, $_] } sort keys %$data : [$data, '']];
+        unless ( defined $p ) {
+            my $i = 0;
+            return [
+                map {
+                    _schema_extract(
+                        $_->[0], [@$path],
+                        json_pointer( $pos, $_->[1] ), $cb
+                    )
+                } ref $data eq 'ARRAY' ? map { [ $_, $i++ ] }
+                  @$data : ref $data eq 'HASH' ? map { [ $data->{$_}, $_ ] }
+                  sort keys %$data : [ $data, '' ]
+            ];
+        }
+
+        $p =~ s!~1!/!g;
+        $p =~ s/~0/~/g;
+        $pos = json_pointer $pos, $p if $cb;
+
+        if ( ref $data eq 'HASH' and exists $data->{$p} ) {
+            $data = $data->{$p};
+        }
+        elsif ( ref $data eq 'ARRAY' and $p =~ /^\d+$/ and @$data > $p ) {
+            $data = $data->[$p];
+        }
+        else {
+            return undef;
+        }
+
+        $data = $tied->schema
+          while ref $data eq 'HASH'
+          and $tied = tied %$data;
     }
 
-    $p =~ s!~1!/!g;
-    $p =~ s/~0/~/g;
-    $pos = json_pointer $pos, $p if $cb;
-
-    if (ref $data eq 'HASH' and exists $data->{$p}) {
-      $data = $data->{$p};
-    }
-    elsif (ref $data eq 'ARRAY' and $p =~ /^\d+$/ and @$data > $p) {
-      $data = $data->[$p];
-    }
-    else {
-      return undef;
-    }
-
-    $data = $tied->schema while ref $data eq 'HASH' and $tied = tied %$data;
-  }
-
-  return $cb->($data, $pos) if $cb;
-  return $data;
+    return $cb->( $data, $pos ) if $cb;
+    return $data;
 }
 
 my $sereal_encoder;
+
 sub _sereal_encode {
-  $sereal_encoder ||= Sereal::Encoder->new({canonical => 1});
-  return $sereal_encoder->encode($_[0]);
+    $sereal_encoder ||= Sereal::Encoder->new( { canonical => 1 } );
+    return $sereal_encoder->encode( $_[0] );
 }
 
 BEGIN {
-  if (eval 'use YAML::XS 0.67;1') {
-    *_yaml_dump = sub { local $YAML::XS::Boolean = 'JSON::PP'; YAML::XS::Dump(@_) };
-    *_yaml_load = sub { local $YAML::XS::Boolean = 'JSON::PP'; YAML::XS::Load(@_) };
-  }
-  else {
-    require YAML::PP;
-    my $pp = YAML::PP->new(boolean => 'JSON::PP');
-    *_yaml_dump = sub { $pp->dump_string(@_) };
-    *_yaml_load = sub { $pp->load_string(@_) };
-  }
+    if ( eval 'use YAML::XS 0.67;1' ) {
+        *_yaml_dump
+          = sub { local $YAML::XS::Boolean = 'JSON::PP'; YAML::XS::Dump(@_) };
+        *_yaml_load
+          = sub { local $YAML::XS::Boolean = 'JSON::PP'; YAML::XS::Load(@_) };
+    }
+    else {
+        require YAML::PP;
+        my $pp = YAML::PP->new( boolean => 'JSON::PP' );
+        *_yaml_dump = sub { $pp->dump_string(@_) };
+        *_yaml_load = sub { $pp->load_string(@_) };
+    }
 }
 
 1;

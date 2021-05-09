@@ -9,111 +9,112 @@ use namespace::clean;
 use overload q("") => \&to_string, bool => sub {1}, fallback => 1;
 
 our $MESSAGES = {
-  allOf => {type => '/allOf Expected %3 - got %4.'},
-  anyOf => {type => '/anyOf Expected %3 - got %4.'},
-  array => {
-    additionalItems => 'Invalid number of items: %3/%4.',
-    maxContains     => 'Contains too many items: %3/%4.',
-    maxItems        => 'Too many items: %3/%4.',
-    minContains     => 'Contains not enough items: %3/%4.',
-    minItems        => 'Not enough items: %3/%4.',
-    uniqueItems     => 'Unique items required.',
-    contains        => 'No items contained.',
-  },
-  const   => {const => 'Does not match const: %3.'},
-  enum    => {enum  => 'Not in enum list: %3.'},
-  integer => {
-    ex_maximum => '%3 >= maximum(%4)',
-    ex_minimum => '%3 <= minimum(%4)',
-    maximum    => '%3 > maximum(%4)',
-    minimum    => '%3 < minimum(%4)',
-    multipleOf => 'Not multiple of %3.',
-  },
-  not    => {not  => 'Should not match.'},
-  null   => {type => 'Not null.'},
-  number => {
-    ex_maximum => '%3 >= maximum(%4)',
-    ex_minimum => '%3 <= minimum(%4)',
-    maximum    => '%3 > maximum(%4)',
-    minimum    => '%3 < minimum(%4)',
-    multipleOf => 'Not multiple of %3.',
-  },
-  object => {
-    additionalProperties => 'Properties not allowed: %3.',
-    maxProperties        => 'Too many properties: %3/%4.',
-    minProperties        => 'Not enough properties: %3/%4.',
-    required             => 'Missing property.',
-    dependencies         => 'Missing property. Dependee: %3.',
-  },
-  oneOf => {
-    all_rules_match => 'All of the oneOf rules match.',
-    n_rules_match   => 'oneOf rules %3 match.',
-    type            => '/oneOf Expected %3 - got %4.',
-  },
-  string => {
-    pattern   => 'String does not match %3.',
-    maxLength => 'String is too long: %3/%4.',
-    minLength => 'String is too short: %3/%4.',
-  }
+    allOf => { type => '/allOf Expected %3 - got %4.' },
+    anyOf => { type => '/anyOf Expected %3 - got %4.' },
+    array => {
+        additionalItems => 'Invalid number of items: %3/%4.',
+        maxContains     => 'Contains too many items: %3/%4.',
+        maxItems        => 'Too many items: %3/%4.',
+        minContains     => 'Contains not enough items: %3/%4.',
+        minItems        => 'Not enough items: %3/%4.',
+        uniqueItems     => 'Unique items required.',
+        contains        => 'No items contained.',
+    },
+    const   => { const => 'Does not match const: %3.' },
+    enum    => { enum  => 'Not in enum list: %3.' },
+    integer => {
+        ex_maximum => '%3 >= maximum(%4)',
+        ex_minimum => '%3 <= minimum(%4)',
+        maximum    => '%3 > maximum(%4)',
+        minimum    => '%3 < minimum(%4)',
+        multipleOf => 'Not multiple of %3.',
+    },
+    not    => { not  => 'Should not match.' },
+    null   => { type => 'Not null.' },
+    number => {
+        ex_maximum => '%3 >= maximum(%4)',
+        ex_minimum => '%3 <= minimum(%4)',
+        maximum    => '%3 > maximum(%4)',
+        minimum    => '%3 < minimum(%4)',
+        multipleOf => 'Not multiple of %3.',
+    },
+    object => {
+        additionalProperties => 'Properties not allowed: %3.',
+        maxProperties        => 'Too many properties: %3/%4.',
+        minProperties        => 'Not enough properties: %3/%4.',
+        required             => 'Missing property.',
+        dependencies         => 'Missing property. Dependee: %3.',
+    },
+    oneOf => {
+        all_rules_match => 'All of the oneOf rules match.',
+        n_rules_match   => 'oneOf rules %3 match.',
+        type            => '/oneOf Expected %3 - got %4.',
+    },
+    string => {
+        pattern   => 'String does not match %3.',
+        maxLength => 'String is too long: %3/%4.',
+        minLength => 'String is too short: %3/%4.',
+    }
 };
 
 has details => (
-  is      => 'ro',
-  default => sub { [qw(generic generic)] },
+    is      => 'ro',
+    default => sub { [qw(generic generic)] },
 );
 
 has message => (
-  is      => 'ro',
-  lazy    => 1,
-  default => sub {
-    my $self    = shift;
-    my $details = $self->details;
-    my $message;
+    is      => 'ro',
+    lazy    => 1,
+    default => sub {
+        my $self    = shift;
+        my $details = $self->details;
+        my $message;
 
-    if (($details->[0] || '') eq 'format') {
-      $message = '%3';
-    }
-    elsif (($details->[1] || '') eq 'type' and @$details == 3) {
-      $message = 'Expected %1 - got %3.';
-    }
-    elsif (my $group = $MESSAGES->{$details->[0]}) {
-      $message = $group->{$details->[1] || 'default'};
-    }
+        if ( ( $details->[0] || '' ) eq 'format' ) {
+            $message = '%3';
+        }
+        elsif ( ( $details->[1] || '' ) eq 'type' and @$details == 3 ) {
+            $message = 'Expected %1 - got %3.';
+        }
+        elsif ( my $group = $MESSAGES->{ $details->[0] } ) {
+            $message = $group->{ $details->[1] || 'default' };
+        }
 
-    return join ' ', Failed => @$details unless defined $message;
+        return join ' ', Failed => @$details unless defined $message;
 
-    $message =~ s!\%(\d)\b!{$details->[$1 - 1] // ''}!ge;
-    return $message;
-  },
+        $message =~ s!\%(\d)\b!{$details->[$1 - 1] // ''}!ge;
+        return $message;
+    },
 );
 
 has path => (
-  is      => 'rw', # XXX why mutable?
-  default => '/',
+    is      => 'rw',    # XXX why mutable?
+    default => '/',
 );
 
 around BUILDARGS => sub {
-  my ( $orig, $class, @raw_args ) = @_;
+    my ( $orig, $class, @raw_args ) = @_;
 
-  # Constructed with attributes
-  return $class->$orig($raw_args[0]) if ref $raw_args[0] eq 'HASH';
+    # Constructed with attributes
+    return $class->$orig( $raw_args[0] ) if ref $raw_args[0] eq 'HASH';
 
-  # Constructed with ($path, ...)
-  my ( $path, $arg ) = @raw_args;
-  $path ||= '/';
+    # Constructed with ($path, ...)
+    my ( $path, $arg ) = @raw_args;
+    $path ||= '/';
 
-  if ( ref $arg ) {
-    # Constructed with ($path, \@details)
-    return $class->$orig({ path => $path, details => $arg });
-  }
-  else {
-    # Constructed with ($path, $message)
-    return $class->$orig({ path => $path, message => $arg });
-  }
+    if ( ref $arg ) {
+
+        # Constructed with ($path, \@details)
+        return $class->$orig( { path => $path, details => $arg } );
+    }
+    else {
+        # Constructed with ($path, $message)
+        return $class->$orig( { path => $path, message => $arg } );
+    }
 };
 
 sub to_string { sprintf '%s: %s', $_[0]->path, $_[0]->message }
-sub TO_JSON   { {message => $_[0]->message, path => $_[0]->path} }
+sub TO_JSON { { message => $_[0]->message, path => $_[0]->path } }
 
 1;
 
