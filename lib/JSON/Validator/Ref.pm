@@ -10,45 +10,46 @@ sub fqn { $_[0][2] }
 sub ref { $_[0][0]{'$ref'} }
 
 sub schema {
-  my $self = shift;
-  my @keys = grep { $_ ne '$ref' } keys %{$self->[0]};
-  return $self->[1] if !@keys or CORE::ref($self->[1]) ne 'HASH';
+    my $self = shift;
+    my @keys = grep { $_ ne '$ref' } keys %{ $self->[0] };
+    return $self->[1] if !@keys or CORE::ref( $self->[1] ) ne 'HASH';
 
-  # Return merged schema
-  my $schema = $self->[1];
-  while (my $tied = tied %$schema) { $schema = $tied->schema }
-  my %schema = %$schema;
-  $schema{$_} = $self->[0]{$_} for @keys;
-  return \%schema;
+    # Return merged schema
+    my $schema = $self->[1];
+    while ( my $tied = tied %$schema ) { $schema = $tied->schema }
+    my %schema = %$schema;
+    $schema{$_} = $self->[0]{$_} for @keys;
+    return \%schema;
 }
 
 sub EXISTS {
-  my ($self, $k) = @_;
-  return exists $self->[0]{$k} || (CORE::ref($self->[1]) eq 'HASH' && exists $self->[1]{$k});
+    my ( $self, $k ) = @_;
+    return exists $self->[0]{$k}
+      || ( CORE::ref( $self->[1] ) eq 'HASH' && exists $self->[1]{$k} );
 }
 
 sub FETCH {
-  my ($self, $k) = @_;
-  return $self->[0]{$k} if exists $self->[0]{$k};
-  return $self->[1]{$k} if CORE::ref($self->[1]) eq 'HASH';
-  return undef;
+    my ( $self, $k ) = @_;
+    return $self->[0]{$k} if exists $self->[0]{$k};
+    return $self->[1]{$k} if CORE::ref( $self->[1] ) eq 'HASH';
+    return undef;
 }
 
 sub CLEAR {
-  my ($self) = @_;
-  $self->[0] = {};
+    my ($self) = @_;
+    $self->[0] = {};
 }
 
 # Make it look like there is only one key in the hash
-sub FIRSTKEY { scalar keys %{$_[0][0]}; each %{$_[0][0]} }
-sub NEXTKEY  { each %{$_[0][0]} }
-sub SCALAR   { scalar %{$_[0][0]} }
-sub STORE    { $_[0][0]{$_[1]} = $_[2] }
+sub FIRSTKEY { scalar keys %{ $_[0][0] }; each %{ $_[0][0] } }
+sub NEXTKEY  { each %{ $_[0][0] } }
+sub SCALAR   { scalar %{ $_[0][0] } }
+sub STORE    { $_[0][0]{ $_[1] } = $_[2] }
 
 sub TIEHASH {
-  my ($class, $schema, $ref, $fqn) = @_;
-  $ref = CORE::ref($ref) eq 'HASH' ? {%$ref} : {'$ref' => $ref};
-  return bless [$ref, $schema, $fqn // $ref->{'$ref'}], $class;
+    my ( $class, $schema, $ref, $fqn ) = @_;
+    $ref = CORE::ref($ref) eq 'HASH' ? {%$ref} : { '$ref' => $ref };
+    return bless [ $ref, $schema, $fqn // $ref->{'$ref'} ], $class;
 }
 
 # This cannot return schema() since it might cause circular references

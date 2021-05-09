@@ -10,12 +10,28 @@ use JSON::Pointer;
 use JSON::Validator::Formats;
 use JSON::Validator::Ref;
 use JSON::Validator::Store;
-use JSON::Validator::Util qw(E data_checksum data_type is_type json_pointer prefix_errors schema_type);
+use JSON::Validator::Util
+  qw(E data_checksum data_type is_type json_pointer prefix_errors schema_type);
 use List::Util qw(uniq);
 use Mojo::URL;
 use Path::Tiny;
 use Scalar::Util qw(blessed refaddr);
-use Sub::Install;
+use Sub::HandlesVia;
+use Type::Params qw(compile);
+use Types::Standard qw(
+  Any
+  ArrayRef
+  Bool
+  Dict
+  Enum
+  HashRef
+  InstanceOf
+  Map
+  Object
+  Optional
+  Str
+);
+use URI;
 
 use constant RECURSION_LIMIT => $ENV{JSON_VALIDATOR_RECURSION_LIMIT} || 100;
 
@@ -23,12 +39,12 @@ our $VERSION   = '4.16';
 our @EXPORT_OK = qw(joi validate_json);
 
 our %SCHEMAS = (
-  'http://json-schema.org/draft-04/schema#'             => '+Draft4',
-  'http://json-schema.org/draft-06/schema#'             => '+Draft6',
-  'http://json-schema.org/draft-07/schema#'             => '+Draft7',
-  'https://json-schema.org/draft/2019-09/schema'        => '+Draft201909',
-  'http://swagger.io/v2/schema.json'                    => '+OpenAPIv2',
-  'https://spec.openapis.org/oas/3.0/schema/2019-04-02' => '+OpenAPIv3',
+    'http://json-schema.org/draft-04/schema#'             => '+Draft4',
+    'http://json-schema.org/draft-06/schema#'             => '+Draft6',
+    'http://json-schema.org/draft-07/schema#'             => '+Draft7',
+    'https://json-schema.org/draft/2019-09/schema'        => '+Draft201909',
+    'http://swagger.io/v2/schema.json'                    => '+OpenAPIv2',
+    'https://spec.openapis.org/oas/3.0/schema/2019-04-02' => '+OpenAPIv3',
 );
 
 has formats => (
@@ -55,852 +71,1029 @@ has store => (
     default => sub {
         my $self = shift;
         my %attrs;
-        $attrs{$_} = delete $self->{$_} for grep { $self->{$_} } qw(cache_paths ua);
+        $attrs{$_} = delete $self->{$_}
+          for grep { $self->{$_} } qw(cache_paths ua);
         return JSON::Validator::Store->new(%attrs);
-    }
+    },
+    handles => [qw/ cache_paths ua /],
 );
 
 my $encoder = JSON->new->allow_nonref;
 
-for my $method (qw(cache_paths ua)) {
-  Sub::Install::install_sub(
-    {
-      code => sub { shift->store->$method(@_) },
-      as   => $method,
-    }
-  );
-}
+my $check_bundle = compile( Object,
+    Optional [
+        Dict [
+            schema  => HashRef | InstanceOf ['JSON::Validator::Schema'],
+            replace => Optional             [Bool]
+        ]
+    ]
+);
 
 sub bundle {
-  my ($self, $args) = @_;
-  my $cloner;
+    my ( $self, $args ) = $check_bundle->(@_);
+    my $cloner;
 
-  my $get_data  = $self->can('data') ? 'data' : 'schema';
-  my $schema    = $self->_new_schema($args->{schema} || $self->$get_data);
-  my $schema_id = $schema->id;
-  my @topics    = ([$schema->data, my $bundle = {}]);                        # ([$from, $to], ...);
+    my $get_data  = $self->can('data') ? 'data' : 'schema';
+    my $schema    = $self->_new_schema( $args->{schema} || $self->$get_data );
+    my $schema_id = $schema->id;
+    my @topics
+      = ( [ $schema->data, my $bundle = {} ] );    # ([$from, $to], ...);
 
-  if ($args->{replace}) {
-    $cloner = sub {
-      my $from      = shift;
-      my $from_type = ref $from;
-      my $tied      = $from_type eq 'HASH' && tied %$from;
+    if ( $args->{replace} ) {
+        $cloner = sub {
+            my $from      = shift;
+            my $from_type = ref $from;
+            my $tied      = $from_type eq 'HASH' && tied %$from;
 
-      $from = $tied->schema if $tied;
-      my $to = $from_type eq 'ARRAY' ? [] : $from_type eq 'HASH' ? {} : $from;
-      push @topics, [$from, $to] if $from_type;
-      return $to;
-    };
-  }
-  else {
-    $cloner = sub {
-      my $from      = shift;
-      my $from_type = ref $from;
-      my $tied      = $from_type eq 'HASH' && tied %$from;
-
-      unless ($tied) {
-        my $to = $from_type eq 'ARRAY' ? [] : $from_type eq 'HASH' ? {} : $from;
-        push @topics, [$from, $to] if $from_type;
-        return $to;
-      }
-
-      # Traverse all $ref
-      while (my $tmp = tied %{$tied->schema}) { $tied = $tmp }
-
-      return $from if !$args->{schema} and $tied->fqn =~ m!^\Q$schema_id\E\#!;
-
-      my $path = $self->_definitions_path($bundle, $tied);
-      unless ($self->{bundled_refs}{$tied->fqn}++) {
-        push @topics, [_node($schema->data, $path, 1, 0) || {}, _node($bundle, $path, 1, 1)];
-        push @topics, [$tied->schema, _node($bundle, $path, 0, 1)];
-      }
-
-      $path = join '/', '#', @$path;
-      tie my %ref, 'JSON::Validator::Ref', $tied->schema, $path;
-      return \%ref;
-    };
-  }
-
-  local $self->{bundled_refs} = {};
-
-  while (@topics) {
-    my ($from, $to) = @{shift @topics};
-    if (ref $from eq 'ARRAY') {
-      for (my $i = 0; $i < @$from; $i++) {
-        $to->[$i] = $cloner->($from->[$i]);
-      }
+            $from = $tied->schema if $tied;
+            my $to
+              = $from_type eq 'ARRAY' ? []
+              : $from_type eq 'HASH'  ? {}
+              :                         $from;
+            push @topics, [ $from, $to ] if $from_type;
+            return $to;
+        };
     }
-    elsif (ref $from eq 'HASH') {
-      for my $key (keys %$from) {
-        $to->{$key} //= $cloner->($from->{$key});
-      }
-    }
-  }
+    else {
+        $cloner = sub {
+            my $from      = shift;
+            my $from_type = ref $from;
+            my $tied      = $from_type eq 'HASH' && tied %$from;
 
-  return $bundle;
+            unless ($tied) {
+                my $to
+                  = $from_type eq 'ARRAY' ? []
+                  : $from_type eq 'HASH'  ? {}
+                  :                         $from;
+                push @topics, [ $from, $to ] if $from_type;
+                return $to;
+            }
+
+            # Traverse all $ref
+            while ( my $tmp = tied %{ $tied->schema } ) { $tied = $tmp }
+
+            return $from
+              if !$args->{schema} and $tied->fqn =~ m!^\Q$schema_id\E\#!;
+
+            my $path = $self->_definitions_path( $bundle, $tied );
+            unless ( $self->{bundled_refs}{ $tied->fqn }++ ) {
+                push @topics,
+                  [ _node( $schema->data, $path, 1, 0 ) || {},
+                    _node( $bundle,       $path, 1, 1 )
+                  ];
+                push @topics,
+                  [ $tied->schema, _node( $bundle, $path, 0, 1 ) ];
+            }
+
+            $path = join '/', '#', @$path;
+            tie my %ref, 'JSON::Validator::Ref', $tied->schema, $path;
+            return \%ref;
+        };
+    }
+
+    local $self->{bundled_refs} = {};
+
+    while (@topics) {
+        my ( $from, $to ) = @{ shift @topics };
+        if ( ref $from eq 'ARRAY' ) {
+            for ( my $i = 0; $i < @$from; $i++ ) {
+                $to->[$i] = $cloner->( $from->[$i] );
+            }
+        }
+        elsif ( ref $from eq 'HASH' ) {
+            for my $key ( keys %$from ) {
+                $to->{$key} //= $cloner->( $from->{$key} );
+            }
+        }
+    }
+
+    return $bundle;
 }
 
-my $short = {bool => 'booleans', def => 'defaults', num => 'numbers', str => 'strings'};
-sub coerce {
-  my $self = shift;
-  return $self->{coerce} ||= {} unless defined(my $what = shift);
+my %short_coercions = (
+    bool => 'booleans',
+    def  => 'defaults',
+    num  => 'numbers',
+    str  => 'strings'
+);
 
-  if ($what eq '1') {
-    warn('coerce(1) will be deprecated.');
-    $what = {booleans => 1, numbers => 1, strings => 1};
-  }
+has coerce => (
+    is  => 'rw',
+    isa => Map->of( Enum [ values %short_coercions ], Bool )->plus_coercions(
 
-  $what                                 = {map { ($_ => 1) } split /,/, $what} unless ref $what;
-  $self->{coerce}                       = {};
-  $self->{coerce}{($short->{$_} || $_)} = $what->{$_} for keys %$what;
+        # back-compat single bool true arg
+        Enum [1],
+        sub {
+            warn('coerce(1) will be deprecated.');
+            return { booleans => 1, numbers => 1, strings => 1 };
+        },
 
-  return $self;
+        # back-compat CSV
+        Str,
+        sub {
+            return {
+                map   { $_ => 1 }
+                  map { $short_coercions{$_} ? $short_coercions{$_} : $_ }
+                  split( /,/, $_ )
+            };
+        }
+    ),
+    handles_via => 'Hash',
+    coerce      => 1,
+    lazy        => 1,
+    builder     => '_build_coerce',
+    handles     => { should_coerce => 'get', },
+);
+
+sub _build_coerce {
+    return +{};
 }
 
-sub get { JSON::Validator::Util::schema_extract(shift->schema->data, shift) }
+around coerce => sub {
+    my ( $orig, $self, @args ) = @_;
+
+    my $ret = $self->$orig(@args);
+
+    # Mojo back-compat: mutators return $self
+    return @args ? $self : $ret;
+};
+
+sub get {
+    JSON::Validator::Util::schema_extract( shift->schema->data, shift );
+}
 
 sub load_and_validate_schema {
-  my ($self, $schema, $args) = @_;
+    my ( $self, $schema, $args ) = @_;
 
-  delete $self->{schema};
-  my $schema_obj = $self->_new_schema($schema, %$args);
-  confess join "\n", "Invalid JSON specification", (ref $schema eq 'HASH' ? Data::Dumper->new([$schema])->Indent(1)->Sortkeys(1)->Terse(1)->Useqq(1)->Dump : $schema),
-    map {"- $_"} @{$schema_obj->errors}
-    if @{$schema_obj->errors};
+    delete $self->{schema};
+    my $schema_obj = $self->_new_schema( $schema, %$args );
+    confess join "\n", "Invalid JSON specification",
+      ( ref $schema eq 'HASH'
+        ? Data::Dumper->new( [$schema] )->Indent(1)->Sortkeys(1)->Terse(1)
+          ->Useqq(1)->Dump
+        : $schema
+      ),
+      map {"- $_"} @{ $schema_obj->errors }
+      if @{ $schema_obj->errors };
 
-  $self->{schema} = $schema_obj;
-  return $self;
-}
-
-sub BUILD {
-    my ( $self, $args ) = @_;
-    $self->coerce($args->{coerce}) if defined $args->{coerce};
+    $self->{schema} = $schema_obj;
+    return $self;
 }
 
 sub schema {
-  my $self = shift;
-  return $self->{schema} unless @_;
-  $self->{schema} = $self->_new_schema(shift);
-  return $self;
+    my $self = shift;
+    return $self->{schema} unless @_;
+    $self->{schema} = $self->_new_schema(shift);
+    return $self;
 }
 
 sub validate {
-  my ($self, $data, $schema) = @_;
-  $schema //= $self->schema->data;
-  return E '/', 'No validation rules defined.' unless defined $schema;
+    my ( $self, $data, $schema ) = @_;
+    $schema //= $self->schema->data;
+    return E '/', 'No validation rules defined.' unless defined $schema;
 
-  local $self->{schema}      = $self->_new_schema($schema);
-  local $self->{seen}        = {};
-  local $self->{temp_schema} = [];                            # make sure random-errors.t does not fail
-  my @errors = sort { $a->path cmp $b->path } $self->_validate($_[1], '', $schema);
-  return @errors;
+    local $self->{schema} = $self->_new_schema($schema);
+    local $self->{seen}   = {};
+    local $self->{temp_schema} = []; # make sure random-errors.t does not fail
+    my @errors
+      = sort { $a->path cmp $b->path } $self->_validate( $_[1], '', $schema );
+    return @errors;
 }
 
 sub _build_formats {
-  return {
-    'byte'                  => JSON::Validator::Formats->can('check_byte'),
-    'date'                  => JSON::Validator::Formats->can('check_date'),
-    'date-time'             => JSON::Validator::Formats->can('check_date_time'),
-    'duration'              => JSON::Validator::Formats->can('check_duration'),
-    'double'                => JSON::Validator::Formats->can('check_double'),
-    'email'                 => JSON::Validator::Formats->can('check_email'),
-    'float'                 => JSON::Validator::Formats->can('check_float'),
-    'hostname'              => JSON::Validator::Formats->can('check_hostname'),
-    'idn-email'             => JSON::Validator::Formats->can('check_idn_email'),
-    'idn-hostname'          => JSON::Validator::Formats->can('check_idn_hostname'),
-    'int32'                 => JSON::Validator::Formats->can('check_int32'),
-    'int64'                 => JSON::Validator::Formats->can('check_int64'),
-    'ipv4'                  => JSON::Validator::Formats->can('check_ipv4'),
-    'ipv6'                  => JSON::Validator::Formats->can('check_ipv6'),
-    'iri'                   => JSON::Validator::Formats->can('check_iri'),
-    'iri-reference'         => JSON::Validator::Formats->can('check_iri_reference'),
-    'json-pointer'          => JSON::Validator::Formats->can('check_json_pointer'),
-    'regex'                 => JSON::Validator::Formats->can('check_regex'),
-    'relative-json-pointer' => JSON::Validator::Formats->can('check_relative_json_pointer'),
-    'time'                  => JSON::Validator::Formats->can('check_time'),
-    'uri'                   => JSON::Validator::Formats->can('check_uri'),
-    'uri-reference'         => JSON::Validator::Formats->can('check_uri_reference'),
-    'uri-reference'         => JSON::Validator::Formats->can('check_uri_reference'),
-    'uri-template'          => JSON::Validator::Formats->can('check_uri_template'),
-    'uuid'                  => JSON::Validator::Formats->can('check_uuid'),
-  };
+    return {
+        'byte'         => JSON::Validator::Formats->can('check_byte'),
+        'date'         => JSON::Validator::Formats->can('check_date'),
+        'date-time'    => JSON::Validator::Formats->can('check_date_time'),
+        'duration'     => JSON::Validator::Formats->can('check_duration'),
+        'double'       => JSON::Validator::Formats->can('check_double'),
+        'email'        => JSON::Validator::Formats->can('check_email'),
+        'float'        => JSON::Validator::Formats->can('check_float'),
+        'hostname'     => JSON::Validator::Formats->can('check_hostname'),
+        'idn-email'    => JSON::Validator::Formats->can('check_idn_email'),
+        'idn-hostname' => JSON::Validator::Formats->can('check_idn_hostname'),
+        'int32'        => JSON::Validator::Formats->can('check_int32'),
+        'int64'        => JSON::Validator::Formats->can('check_int64'),
+        'ipv4'         => JSON::Validator::Formats->can('check_ipv4'),
+        'ipv6'         => JSON::Validator::Formats->can('check_ipv6'),
+        'iri'          => JSON::Validator::Formats->can('check_iri'),
+        'iri-reference' =>
+          JSON::Validator::Formats->can('check_iri_reference'),
+        'json-pointer' => JSON::Validator::Formats->can('check_json_pointer'),
+        'regex'        => JSON::Validator::Formats->can('check_regex'),
+        'relative-json-pointer' =>
+          JSON::Validator::Formats->can('check_relative_json_pointer'),
+        'time' => JSON::Validator::Formats->can('check_time'),
+        'uri'  => JSON::Validator::Formats->can('check_uri'),
+        'uri-reference' =>
+          JSON::Validator::Formats->can('check_uri_reference'),
+        'uri-reference' =>
+          JSON::Validator::Formats->can('check_uri_reference'),
+        'uri-template' => JSON::Validator::Formats->can('check_uri_template'),
+        'uuid'         => JSON::Validator::Formats->can('check_uuid'),
+    };
 }
 
 sub _definitions_path {
-  my ($self, $bundle, $ref) = @_;
-  my $path = $self->_definitions_path_for_ref($ref);
+    my ( $self, $bundle, $ref ) = @_;
+    my $path = $self->_definitions_path_for_ref($ref);
 
-  # No need to rewrite, if it already has a nice name
-  my $node   = _node($bundle, $path, 2, 0);
-  my $prefix = join '/', @$path;
-  if ($ref->fqn =~ m!#/$prefix/([^/]+)$!) {
-    my $key = $1;
+    # No need to rewrite, if it already has a nice name
+    my $node   = _node( $bundle, $path, 2, 0 );
+    my $prefix = join '/', @$path;
+    if ( $ref->fqn =~ m!#/$prefix/([^/]+)$! ) {
+        my $key = $1;
 
-    if ( $self->{bundled_refs}{$ref->fqn}
-      or !$node
-      or !$node->{$key}
-      or data_checksum($ref->schema) eq data_checksum($node->{$key}))
-    {
-      return [@$path, $key];
+        if (   $self->{bundled_refs}{ $ref->fqn }
+            or !$node
+            or !$node->{$key}
+            or data_checksum( $ref->schema ) eq
+            data_checksum( $node->{$key} ) )
+        {
+            return [ @$path, $key ];
+        }
     }
-  }
 
-  # Generate definitions key based on filename
-  my $fqn = Mojo::URL->new($ref->fqn);
-  my $key = $fqn->fragment;
-  if ($fqn->scheme and $fqn->scheme eq 'file') {
-    $key = join '-', map { s!^\W+!!; $_ } grep {$_} path($fqn->path)->basename, $key,
-      substr(sha1_hex($fqn->path), 0, 10);
-  }
+    # Generate definitions key based on filename
+    my $fqn = URI->new( $ref->fqn );
+    my $key = $fqn->fragment;
+    if ( $fqn->scheme and $fqn->scheme eq 'file' ) {
+        $key = join '-',
+          map { s!^\W+!!; $_ } grep {$_} path( $fqn->path )->basename, $key,
+          substr( sha1_hex( $fqn->path ), 0, 10 );
+    }
 
-  # Fallback or nicer path name
-  $key =~ s![^\w-]!_!g;
-  return [@$path, $key];
+    # Fallback or nicer path name
+    $key =~ s![^\w-]!_!g;
+    return [ @$path, $key ];
 }
 
 sub _definitions_path_for_ref { ['definitions'] }
 
 sub _find_and_resolve_refs {
-  my ($self, $base_url, $schema) = @_;
-  my %root = is_type($schema, 'HASH') ? %$schema : ();
+    my ( $self, $base_url, $schema ) = @_;
+    my %root = is_type( $schema, 'HASH' ) ? %$schema : ();
 
-  my ($id_key, @topics, @refs, %seen) = ($self->_id_key, [$base_url, $schema]);
-  while (@topics) {
-    my ($base_url, $topic) = @{shift @topics};
+    my ( $id_key, @topics, @refs, %seen )
+      = ( $self->_id_key, [ $base_url, $schema ] );
+    while (@topics) {
+        my ( $base_url, $topic ) = @{ shift @topics };
 
-    if (is_type $topic, 'ARRAY') {
-      push @topics, map { [$base_url, $_] } @$topic;
+        if ( is_type $topic, 'ARRAY' ) {
+            push @topics, map { [ $base_url, $_ ] } @$topic;
+        }
+        elsif ( is_type $topic, 'HASH' ) {
+            next if $seen{ refaddr($topic) }++;
+
+            my $base_url = $base_url;    # do not change the global $base_url
+            if ( $topic->{$id_key} and !ref $topic->{$id_key} ) {
+                my $id = Mojo::URL->new( $topic->{$id_key} );
+                $id = $id->to_abs($base_url) unless $id->is_abs;
+                $self->store->add( $id => $topic );
+                $base_url = $id;
+            }
+
+            my $has_ref
+              = $topic->{'$ref'}
+              && !ref $topic->{'$ref'}
+              && !tied %$topic ? 1 : 0;
+            push @refs, [ $base_url, $topic ] if $has_ref;
+
+            for my $key ( keys %$topic ) {
+                next unless ref $topic->{$key};
+                next if $has_ref and $key eq '$ref';
+                push @topics, [ $base_url, $topic->{$key} ];
+            }
+        }
     }
-    elsif (is_type $topic, 'HASH') {
-      next if $seen{refaddr($topic)}++;
 
-      my $base_url = $base_url;    # do not change the global $base_url
-      if ($topic->{$id_key} and !ref $topic->{$id_key}) {
-        my $id = Mojo::URL->new($topic->{$id_key});
-        $id = $id->to_abs($base_url) unless $id->is_abs;
-        $self->store->add($id => $topic);
-        $base_url = $id;
-      }
+    while (@refs) {
 
-      my $has_ref = $topic->{'$ref'} && !ref $topic->{'$ref'} && !tied %$topic ? 1 : 0;
-      push @refs, [$base_url, $topic] if $has_ref;
-
-      for my $key (keys %$topic) {
-        next unless ref $topic->{$key};
-        next if $has_ref and $key eq '$ref';
-        push @topics, [$base_url, $topic->{$key}];
-      }
+        # my $base_url stomps on $base_url from outer scope, but this appears
+        # unintentional below, where we see:
+        #   $base_url || $base_url
+        my ( $base_url, $topic ) = @{ shift @refs };
+        next if is_type $topic, 'BOOL';
+        next if !$topic->{'$ref'} or ref $topic->{'$ref'};
+        my $base = Mojo::URL->new( $base_url || $base_url )->fragment(undef);
+        my ( $other, $ref_url, $fqn )
+          = $self->_resolve_ref( $topic->{'$ref'}, $base, \%root );
+        tie %$topic, 'JSON::Validator::Ref', $other, "$ref_url", "$fqn";
+        push @refs, [ $other, $fqn ];
     }
-  }
-
-  while (@refs) {
-    my ($base_url, $topic) = @{shift @refs};
-    next if is_type $topic, 'BOOL';
-    next if !$topic->{'$ref'} or ref $topic->{'$ref'};
-    my $base = Mojo::URL->new($base_url || $base_url)->fragment(undef);
-    my ($other, $ref_url, $fqn) = $self->_resolve_ref($topic->{'$ref'}, $base, \%root);
-    tie %$topic, 'JSON::Validator::Ref', $other, "$ref_url", "$fqn";
-    push @refs, [$other, $fqn];
-  }
 }
 
 sub _id_key { $_[0]->schema ? $_[0]->schema->_id_key : 'id' }
 
 sub _new_schema {
-  my ($self, $source, %attrs) = @_;
+    my ( $self, $source, %attrs ) = @_;
 
-  return $source if blessed $source and $source->can('specification');
+    return $source if blessed $source and $source->can('specification');
 
-  # Compat with load_and_validate_schema()
-  $attrs{specification} = delete $attrs{schema} if $attrs{schema};
+    # Compat with load_and_validate_schema()
+    $attrs{specification} = delete $attrs{schema} if $attrs{schema};
 
-  my $loadable
-    = (blessed $source && ($source->can('scheme') || ("$source" !~ /\n/ && -f "$source")))
-    || ($source !~ /\n/ && -f $source)
-    || (!ref $source && $source =~ /^\w/);
+    my $loadable = (
+        blessed $source && ( $source->can('scheme')
+            || ( "$source" !~ /\n/ && -f "$source" ) )
+      )
+      || ( $source !~ /\n/ && -f $source )
+      || ( !ref $source && $source =~ /^\w/ );
 
-  my $store  = $self->store;
-  my $schema = $loadable ? $store->get($store->load($source)) : $source;
+    my $store  = $self->store;
+    my $schema = $loadable ? $store->get( $store->load($source) ) : $source;
 
-  $attrs{formats} ||= $self->{formats} if $self->{formats};
-  $attrs{specification} = $schema->{'$schema'}
-    if !$attrs{specification}
-    and is_type $schema, 'HASH'
-    and $schema->{'$schema'};
-  $attrs{store} = $store;
+    $attrs{formats} ||= $self->{formats} if $self->{formats};
+    $attrs{specification} = $schema->{'$schema'}
+      if !$attrs{specification}
+      and is_type $schema, 'HASH'
+      and $schema->{'$schema'};
+    $attrs{store} = $store;
 
-  return $self->_schema_class($attrs{specification} || $schema)->new($source, %attrs);
+    return $self->_schema_class( $attrs{specification} || $schema )
+      ->new( $source, %attrs );
 }
 
 sub _node {
-  my ($node, $path, $offset, $create) = @_;
+    my ( $node, $path, $offset, $create ) = @_;
 
-  my $n = 0;
-  while ($path->[$n]) {
-    $node->{$path->[$n]} ||= {} if $create;
-    return undef unless $node = $node->{$path->[$n]};
-    last if (++$n) + $offset >= @$path;
-  }
+    my $n = 0;
+    while ( $path->[$n] ) {
+        $node->{ $path->[$n] } ||= {} if $create;
+        return undef unless $node = $node->{ $path->[$n] };
+        last if ( ++$n ) + $offset >= @$path;
+    }
 
-  return $node;
+    return $node;
 }
 
 sub _ref_to_schema {
-  my ($self, $schema) = @_;
-  return $schema if ref $schema ne 'HASH';
+    my ( $self, $schema ) = @_;
+    return $schema if ref $schema ne 'HASH';
 
-  my @guard;
-  while (my $tied = tied %$schema) {
-    push @guard, $tied->ref;
-    confess "Seems like you have a circular reference: @guard" if @guard > RECURSION_LIMIT;
-    $schema = $tied->schema;
-    last if is_type $schema, 'BOOL';
-  }
+    my @guard;
+    while ( my $tied = tied %$schema ) {
+        push @guard, $tied->ref;
+        confess "Seems like you have a circular reference: @guard"
+          if @guard > RECURSION_LIMIT;
+        $schema = $tied->schema;
+        last if is_type $schema, 'BOOL';
+    }
 
-  return $schema;
+    return $schema;
 }
 
 sub _register_root_schema {
-  my ($self, $id, $schema) = @_;
-  confess "Root schema cannot have a fragment in the 'id'. ($id)" if $id =~ /\#./;
-  confess "Root schema cannot have a relative 'id'. ($id)" unless $id =~ /^\w+:/ or -e $id or $id =~ m!^/!;
+    my ( $self, $id, $schema ) = @_;
+    confess "Root schema cannot have a fragment in the 'id'. ($id)"
+      if $id =~ /\#./;
+    confess "Root schema cannot have a relative 'id'. ($id)"
+      unless $id =~ /^\w+:/
+      or -e $id
+      or $id =~ m!^/!;
 }
 
 # _resolve() method is used to convert all "id" into absolute URLs and
 # resolve all the $ref's that we find inside JSON Schema specification.
 sub _resolve {
-  my ($self, $schema, $nested) = @_;
-  return $schema if is_type $schema, 'BOOL';
+    my ( $self, $schema, $nested ) = @_;
+    return $schema if is_type $schema, 'BOOL';
 
-  my ($id_key, $id, $cached_id, $resolved) = ($self->_id_key);
-  if (ref $schema eq 'HASH') {
-    $id        = $schema->{$id_key} // '';
-    $cached_id = $self->store->exists($id);
-    $resolved  = $cached_id ? $self->store->get($cached_id) : $schema;
-  }
-  else {
-    $cached_id = $self->store->exists($id);
-    $id        = $cached_id // $self->store->load($schema);
-    $resolved  = $self->store->get($id);
-    $id        = $resolved->{$id_key} if is_type($resolved, 'HASH') and $resolved->{$id_key};
-  }
+    my ( $id_key, $id, $cached_id, $resolved ) = ( $self->_id_key );
+    if ( ref $schema eq 'HASH' ) {
+        $id        = $schema->{$id_key} // '';
+        $cached_id = $self->store->exists($id);
+        $resolved  = $cached_id ? $self->store->get($cached_id) : $schema;
+    }
+    else {
+        $cached_id = $self->store->exists($id);
+        $id        = $cached_id // $self->store->load($schema);
+        $resolved  = $self->store->get($id);
+        $id        = $resolved->{$id_key}
+          if is_type( $resolved, 'HASH' )
+          and $resolved->{$id_key};
+    }
 
-  $cached_id //= '';
-  $id = Mojo::URL->new("$id");
-  $self->_register_root_schema($id => $resolved) if !$nested and "$id";
-  $self->store->add($id => $resolved)            if "$id"    and "$id" ne $cached_id;
-  $self->_find_and_resolve_refs($id => $resolved) unless $cached_id;
+    $cached_id //= '';
+    $id = Mojo::URL->new("$id");
+    $self->_register_root_schema( $id => $resolved ) if !$nested and "$id";
+    $self->store->add( $id => $resolved ) if "$id" and "$id" ne $cached_id;
+    $self->_find_and_resolve_refs( $id => $resolved ) unless $cached_id;
 
-  return $resolved;
+    return $resolved;
 }
 
 sub _resolve_ref {
-  my ($self, $ref_url, $base_url, $schema) = @_;
-  $ref_url = "#$ref_url" if $ref_url =~ m!^/!;
+    my ( $self, $ref_url, $base_url, $schema ) = @_;
+    $ref_url = "#$ref_url" if $ref_url =~ m!^/!;
 
-  my $fqn     = Mojo::URL->new($ref_url);
-  my $pointer = $fqn->fragment;
-  my $other;
+    my $fqn     = Mojo::URL->new($ref_url);
+    my $pointer = $fqn->fragment;
+    my $other;
 
-  $fqn = $fqn->to_abs($base_url) if "$base_url";
-  $other //= $self->store->get($fqn);
-  $other //= $self->store->get($fqn->clone->fragment(undef));
-  $other //= $self->_resolve($fqn->clone->fragment(undef), 1) if $fqn->is_abs && $fqn ne $base_url;
-  $other //= $schema;
+    $fqn = $fqn->to_abs($base_url) if "$base_url";
+    $other //= $self->store->get($fqn);
+    $other //= $self->store->get( $fqn->clone->fragment(undef) );
+    $other //= $self->_resolve( $fqn->clone->fragment(undef), 1 )
+      if $fqn->is_abs && $fqn ne $base_url;
+    $other //= $schema;
 
-  if (defined $pointer and $pointer =~ m!^/!) {
-    $other = JSON::Pointer->get($other, $pointer);
-    confess qq[Possibly a typo in schema? Could not find "$pointer" in "$fqn" ($ref_url)] unless defined $other;
-  }
+    if ( defined $pointer and $pointer =~ m!^/! ) {
+        $other = JSON::Pointer->get( $other, $pointer );
+        confess
+          qq[Possibly a typo in schema? Could not find "$pointer" in "$fqn" ($ref_url)]
+          unless defined $other;
+    }
 
-  $fqn->fragment($pointer // '');
-  return $other, $ref_url, $fqn;
+    $fqn->fragment( $pointer // '' );
+    return $other, $ref_url, $fqn;
 }
 
 # back compat
 sub _schema_class {
-  my ($self, $spec) = @_;
+    my ( $self, $spec ) = @_;
 
-  # Detect openapiv2 and v3 schemas by content, since no "$schema" is present
-  if (ref $spec eq 'HASH' and $spec->{paths}) {
-    if ($spec->{swagger} and $spec->{swagger} eq '2.0') {
-      $spec = 'http://swagger.io/v2/schema.json';
+   # Detect openapiv2 and v3 schemas by content, since no "$schema" is present
+    if ( ref $spec eq 'HASH' and $spec->{paths} ) {
+        if ( $spec->{swagger} and $spec->{swagger} eq '2.0' ) {
+            $spec = 'http://swagger.io/v2/schema.json';
+        }
+        elsif ( $spec->{openapi} and $spec->{openapi} =~ m!^3\.0\.\d+$! ) {
+            $spec = 'https://spec.openapis.org/oas/3.0/schema/2019-04-02';
+        }
     }
-    elsif ($spec->{openapi} and $spec->{openapi} =~ m!^3\.0\.\d+$!) {
-      $spec = 'https://spec.openapis.org/oas/3.0/schema/2019-04-02';
-    }
-  }
 
-  my $schema_class = $spec && $SCHEMAS{$spec} || 'JSON::Validator::Schema::Draft4';
-  $schema_class =~ s!^\+(.+)$!JSON::Validator::Schema::$1!;
-  confess "Could not load $schema_class: $@" unless $schema_class->can('new') or eval "require $schema_class;1";
+    my $schema_class
+      = $spec && $SCHEMAS{$spec} || 'JSON::Validator::Schema::Draft4';
+    $schema_class =~ s!^\+(.+)$!JSON::Validator::Schema::$1!;
+    confess "Could not load $schema_class: $@"
+      unless $schema_class->can('new')
+      or eval "require $schema_class;1";
 
-  return $schema_class if ref $_[0] eq __PACKAGE__;
+    return $schema_class if ref $_[0] eq __PACKAGE__;
 
-  my $jv_class           = ref($self) || $self;
-  my $short_schema_class = $schema_class =~ m!JSON::Validator::Schema::(.+)! ? $1 : $schema_class;
-  my $package            = sprintf 'JSON::Validator::Schema::Backcompat::%s',
-    $jv_class =~ m!^JSON::Validator::(.+)! ? $1 : $jv_class;
-  return $package if $package->can('new');
+    my $jv_class = ref($self) || $self;
+    my $short_schema_class
+      = $schema_class =~ m!JSON::Validator::Schema::(.+)!
+      ? $1
+      : $schema_class;
+    my $package = sprintf 'JSON::Validator::Schema::Backcompat::%s',
+      $jv_class =~ m!^JSON::Validator::(.+)! ? $1 : $jv_class;
+    return $package if $package->can('new');
 
-  die "package $package: $@" unless eval "package $package; use base '$jv_class'; 1";
-  require Sub::Install;
-  Sub::Install::install_sub(
-    {
-      code => JSON::Validator::Schema->can($_),
-      into => $package,
-      as => $_,
-    }
-  ) for qw(_register_root_schema bundle contains data errors get id new resolve specification validate);;
-  return $package;
+    die "package $package: $@"
+      unless eval "package $package; use base '$jv_class'; 1";
+    require Sub::Install;
+    Sub::Install::install_sub(
+        {
+            code => JSON::Validator::Schema->can($_),
+            into => $package,
+            as   => $_,
+        }
+      )
+      for
+      qw(_register_root_schema bundle contains data errors get id new resolve specification validate);
+    return $package;
 }
 
 sub _validate {
-  my ($self, $data, $path, $schema) = @_;
-  $schema = $self->_ref_to_schema($schema);
-  return $schema ? () : E $path, [not => 'not'] if is_type $schema, 'BOOL';
+    my ( $self, $data, $path, $schema ) = @_;
+    $schema = $self->_ref_to_schema($schema);
+    return $schema ? () : E $path, [ not => 'not' ]
+      if is_type $schema, 'BOOL';
 
-  my @errors;
-  if ($self->recursive_data_protection) {
-    my $seen_addr = join ':', refaddr($schema), (ref $data ? refaddr $data : ++$self->{seen}{scalar});
-    return @{$self->{seen}{$seen_addr}} if $self->{seen}{$seen_addr};    # Avoid recursion
-    $self->{seen}{$seen_addr} = \@errors;
-  }
+    my @errors;
+    if ( $self->recursive_data_protection ) {
+        my $seen_addr = join ':', refaddr($schema),
+          ( ref $data ? refaddr $data : ++$self->{seen}{scalar} );
+        return @{ $self->{seen}{$seen_addr} }
+          if $self->{seen}{$seen_addr};    # Avoid recursion
+        $self->{seen}{$seen_addr} = \@errors;
+    }
 
-  local $_[1] = $data->TO_JSON if blessed $data and $data->can('TO_JSON');
+    local $_[1] = $data->TO_JSON if blessed $data and $data->can('TO_JSON');
 
-  if (my $rules = $schema->{not}) {
-    my @e = $self->_validate($_[1], $path, $rules);
-    push @errors, E $path, [not => 'not'] unless @e;
-  }
-  if (my $rules = $schema->{allOf}) {
-    push @errors, $self->_validate_all_of($_[1], $path, $rules);
-  }
-  if (my $rules = $schema->{anyOf}) {
-    push @errors, $self->_validate_any_of($_[1], $path, $rules);
-  }
-  if (my $rules = $schema->{oneOf}) {
-    push @errors, $self->_validate_one_of($_[1], $path, $rules);
-  }
-  if (exists $schema->{if}) {
-    my $rules = !$schema->{if} || $self->_validate($_[1], $path, $schema->{if}) ? $schema->{else} : $schema->{then};
-    push @errors, $self->_validate($_[1], $path, $rules // {});
-  }
+    if ( my $rules = $schema->{not} ) {
+        my @e = $self->_validate( $_[1], $path, $rules );
+        push @errors, E $path, [ not => 'not' ] unless @e;
+    }
+    if ( my $rules = $schema->{allOf} ) {
+        push @errors, $self->_validate_all_of( $_[1], $path, $rules );
+    }
+    if ( my $rules = $schema->{anyOf} ) {
+        push @errors, $self->_validate_any_of( $_[1], $path, $rules );
+    }
+    if ( my $rules = $schema->{oneOf} ) {
+        push @errors, $self->_validate_one_of( $_[1], $path, $rules );
+    }
+    if ( exists $schema->{if} ) {
+        my $rules
+          = !$schema->{if} || $self->_validate( $_[1], $path, $schema->{if} )
+          ? $schema->{else}
+          : $schema->{then};
+        push @errors, $self->_validate( $_[1], $path, $rules // {} );
+    }
 
-  my $type = $schema->{type} || schema_type $schema, $_[1];
-  if (ref $type eq 'ARRAY') {
-    push @{$self->{temp_schema}}, [map { +{%$schema, type => $_} } @$type];
-    push @errors, $self->_validate_any_of_types($_[1], $path, $self->{temp_schema}[-1]);
-  }
-  elsif ($type) {
-    my $method = sprintf '_validate_type_%s', $type;
-    push @errors, $self->$method($_[1], $path, $schema);
-  }
+    my $type = $schema->{type} || schema_type $schema, $_[1];
+    if ( ref $type eq 'ARRAY' ) {
+        push @{ $self->{temp_schema} },
+          [ map { +{ %$schema, type => $_ } } @$type ];
+        push @errors,
+          $self->_validate_any_of_types(
+            $_[1], $path,
+            $self->{temp_schema}[-1]
+          );
+    }
+    elsif ($type) {
+        my $method = sprintf '_validate_type_%s', $type;
+        push @errors, $self->$method( $_[1], $path, $schema );
+    }
 
-  return @errors if @errors;
+    return @errors if @errors;
 
-  if (exists $schema->{const}) {
-    push @errors, $self->_validate_type_const($_[1], $path, $schema);
-  }
-  if ($schema->{enum}) {
-    push @errors, $self->_validate_type_enum($_[1], $path, $schema);
-  }
+    if ( exists $schema->{const} ) {
+        push @errors, $self->_validate_type_const( $_[1], $path, $schema );
+    }
+    if ( $schema->{enum} ) {
+        push @errors, $self->_validate_type_enum( $_[1], $path, $schema );
+    }
 
-  return @errors;
+    return @errors;
 }
 
 sub _validate_all_of {
-  my ($self, $data, $path, $rules) = @_;
-  my (@errors, @errors_with_prefix);
+    my ( $self, $data, $path, $rules ) = @_;
+    my ( @errors, @errors_with_prefix );
 
-  my $i = 0;
-  for my $rule (@$rules) {
-    next unless my @e = $self->_validate($_[1], $path, $rule);
-    push @errors,             @e;
-    push @errors_with_prefix, [$i, @e];
-  }
-  continue {
-    $i++;
-  }
+    my $i = 0;
+    for my $rule (@$rules) {
+        next unless my @e = $self->_validate( $_[1], $path, $rule );
+        push @errors, @e;
+        push @errors_with_prefix, [ $i, @e ];
+    }
+    continue {
+        $i++;
+    }
 
-  return if not @errors;
+    return if not @errors;
 
-  return prefix_errors(allOf => @errors_with_prefix)
-    if @errors == 1
-    or (grep { $_->details->[1] ne 'type' or $_->path ne ($path || '/') } @errors);
+    return prefix_errors( allOf => @errors_with_prefix )
+      if @errors == 1
+      or ( grep { $_->details->[1] ne 'type' or $_->path ne ( $path || '/' ) }
+        @errors );
 
-  # combine all 'type' errors at the base path together
-  my @details    = map $_->details, @errors;
-  my $want_types = join '/', uniq map $_->[0], @details;
-  return E $path, [allOf => type => $want_types, $details[-1][2]];
+    # combine all 'type' errors at the base path together
+    my @details    = map $_->details, @errors;
+    my $want_types = join '/', uniq map $_->[0], @details;
+    return E $path, [ allOf => type => $want_types, $details[-1][2] ];
 }
 
 sub _validate_any_of_types {
-  my ($self, $data, $path, $rules) = @_;
-  my @errors;
+    my ( $self, $data, $path, $rules ) = @_;
+    my @errors;
 
-  for my $rule (@$rules) {
-    return unless my @e = $self->_validate($_[1], $path, $rule);
-    push @errors, @e;
-  }
+    for my $rule (@$rules) {
+        return unless my @e = $self->_validate( $_[1], $path, $rule );
+        push @errors, @e;
+    }
 
-  # favor a non-type error from one of the rules
-  if (my @e = grep { $_->details->[1] ne 'type' or $_->path ne ($path || '/') } @errors) {
-    return @e;
-  }
+    # favor a non-type error from one of the rules
+    if ( my @e
+        = grep { $_->details->[1] ne 'type' or $_->path ne ( $path || '/' ) }
+        @errors )
+    {
+        return @e;
+    }
 
-  # the type didn't match any of the rules: combine the errors together
-  my @details    = map $_->details, @errors;
-  my $want_types = join '/', uniq map $_->[0], @details;
-  return E $path, [$want_types => 'type', $details[-1][2]];
+    # the type didn't match any of the rules: combine the errors together
+    my @details    = map $_->details, @errors;
+    my $want_types = join '/', uniq map $_->[0], @details;
+    return E $path, [ $want_types => 'type', $details[-1][2] ];
 }
 
 sub _validate_any_of {
-  my ($self, $data, $path, $rules) = @_;
-  my (@errors, @errors_with_prefix);
+    my ( $self, $data, $path, $rules ) = @_;
+    my ( @errors, @errors_with_prefix );
 
-  my $i = 0;
-  for my $rule (@$rules) {
-    return unless my @e = $self->_validate($_[1], $path, $rule);
-    push @errors,             @e;
-    push @errors_with_prefix, [$i, @e];
-  }
-  continue {
-    $i++;
-  }
+    my $i = 0;
+    for my $rule (@$rules) {
+        return unless my @e = $self->_validate( $_[1], $path, $rule );
+        push @errors, @e;
+        push @errors_with_prefix, [ $i, @e ];
+    }
+    continue {
+        $i++;
+    }
 
-  return prefix_errors(anyOf => @errors_with_prefix)
-    if @errors == 1
-    or (grep { $_->details->[1] ne 'type' or $_->path ne ($path || '/') } @errors);
+    return prefix_errors( anyOf => @errors_with_prefix )
+      if @errors == 1
+      or ( grep { $_->details->[1] ne 'type' or $_->path ne ( $path || '/' ) }
+        @errors );
 
-  # combine all 'type' errors at the base path together
-  my @details    = map $_->details, @errors;
-  my $want_types = join '/', uniq map $_->[0], @details;
-  return E $path, [anyOf => type => $want_types, $details[-1][2]];
+    # combine all 'type' errors at the base path together
+    my @details    = map $_->details, @errors;
+    my $want_types = join '/', uniq map $_->[0], @details;
+    return E $path, [ anyOf => type => $want_types, $details[-1][2] ];
 }
 
 sub _validate_one_of {
-  my ($self, $data, $path, $rules) = @_;
-  my (@errors, @errors_with_prefix);
+    my ( $self, $data, $path, $rules ) = @_;
+    my ( @errors, @errors_with_prefix );
 
-  my ($i, @passed) = (0);
-  for my $rule (@$rules) {
-    my @e = $self->_validate($_[1], $path, $rule) or push @passed, $i and next;
-    push @errors_with_prefix, [$i, @e];
-    push @errors,             @e;
-  }
-  continue {
-    $i++;
-  }
+    my ( $i, @passed ) = (0);
+    for my $rule (@$rules) {
+        my @e = $self->_validate( $_[1], $path, $rule )
+          or push @passed, $i and next;
+        push @errors_with_prefix, [ $i, @e ];
+        push @errors, @e;
+    }
+    continue {
+        $i++;
+    }
 
-  return if @passed == 1;
-  return E $path, [oneOf => 'all_rules_match'] unless @errors;
-  return E $path, [oneOf => 'n_rules_match', join(', ', @passed)] if @passed;
+    return if @passed == 1;
+    return E $path, [ oneOf => 'all_rules_match' ] unless @errors;
+    return E $path, [ oneOf => 'n_rules_match', join( ', ', @passed ) ]
+      if @passed;
 
-  return prefix_errors(oneOf => @errors_with_prefix)
-    if @errors == 1
-    or (grep { $_->details->[1] ne 'type' or $_->path ne ($path || '/') } @errors);
+    return prefix_errors( oneOf => @errors_with_prefix )
+      if @errors == 1
+      or ( grep { $_->details->[1] ne 'type' or $_->path ne ( $path || '/' ) }
+        @errors );
 
-  # the type didn't match any of the rules: combine the errors together
-  my @details    = map $_->details, @errors;
-  my $want_types = join '/', uniq map $_->[0], @details;
-  return E $path, [oneOf => type => $want_types, $details[-1][2]];
+    # the type didn't match any of the rules: combine the errors together
+    my @details    = map $_->details, @errors;
+    my $want_types = join '/', uniq map $_->[0], @details;
+    return E $path, [ oneOf => type => $want_types, $details[-1][2] ];
 }
 
 sub _validate_number_max {
-  my ($self, $value, $path, $schema, $expected) = @_;
-  my @errors;
+    my ( $self, $value, $path, $schema, $expected ) = @_;
+    my @errors;
 
-  my $cmp_with = $schema->{exclusiveMaximum} // '';
-  if (is_type $cmp_with, 'BOOL') {
-    push @errors, E $path, [$expected => ex_maximum => $value, $schema->{maximum}] unless $value < $schema->{maximum};
-  }
-  elsif (is_type $cmp_with, 'NUM') {
-    push @errors, E $path, [$expected => ex_maximum => $value, $cmp_with] unless $value < $cmp_with;
-  }
+    my $cmp_with = $schema->{exclusiveMaximum} // '';
+    if ( is_type $cmp_with, 'BOOL' ) {
+        push @errors, E $path,
+          [ $expected => ex_maximum => $value, $schema->{maximum} ]
+          unless $value < $schema->{maximum};
+    }
+    elsif ( is_type $cmp_with, 'NUM' ) {
+        push @errors, E $path,
+          [ $expected => ex_maximum => $value, $cmp_with ]
+          unless $value < $cmp_with;
+    }
 
-  if (exists $schema->{maximum}) {
-    my $cmp_with = $schema->{maximum};
-    push @errors, E $path, [$expected => maximum => $value, $cmp_with] unless $value <= $cmp_with;
-  }
+    if ( exists $schema->{maximum} ) {
+        my $cmp_with = $schema->{maximum};
+        push @errors, E $path, [ $expected => maximum => $value, $cmp_with ]
+          unless $value <= $cmp_with;
+    }
 
-  return @errors;
+    return @errors;
 }
 
 sub _validate_number_min {
-  my ($self, $value, $path, $schema, $expected) = @_;
-  my @errors;
+    my ( $self, $value, $path, $schema, $expected ) = @_;
+    my @errors;
 
-  my $cmp_with = $schema->{exclusiveMinimum} // '';
-  if (is_type $cmp_with, 'BOOL') {
-    push @errors, E $path, [$expected => ex_minimum => $value, $schema->{minimum}] unless $value > $schema->{minimum};
-  }
-  elsif (is_type $cmp_with, 'NUM') {
-    push @errors, E $path, [$expected => ex_minimum => $value, $cmp_with] unless $value > $cmp_with;
-  }
+    my $cmp_with = $schema->{exclusiveMinimum} // '';
+    if ( is_type $cmp_with, 'BOOL' ) {
+        push @errors, E $path,
+          [ $expected => ex_minimum => $value, $schema->{minimum} ]
+          unless $value > $schema->{minimum};
+    }
+    elsif ( is_type $cmp_with, 'NUM' ) {
+        push @errors, E $path,
+          [ $expected => ex_minimum => $value, $cmp_with ]
+          unless $value > $cmp_with;
+    }
 
-  if (exists $schema->{minimum}) {
-    my $cmp_with = $schema->{minimum};
-    push @errors, E $path, [$expected => minimum => $value, $cmp_with] unless $value >= $cmp_with;
-  }
+    if ( exists $schema->{minimum} ) {
+        my $cmp_with = $schema->{minimum};
+        push @errors, E $path, [ $expected => minimum => $value, $cmp_with ]
+          unless $value >= $cmp_with;
+    }
 
-  return @errors;
+    return @errors;
 }
 
 sub _validate_type_enum {
-  my ($self, $data, $path, $schema) = @_;
-  my $enum = $schema->{enum};
-  my $m    = data_checksum $data;
+    my ( $self, $data, $path, $schema ) = @_;
+    my $enum = $schema->{enum};
+    my $m    = data_checksum $data;
 
-  for my $i (@$enum) {
-    return if $m eq data_checksum $i;
-  }
+    for my $i (@$enum) {
+        return if $m eq data_checksum $i;
+    }
 
-  $enum = join ', ', map { (!defined or ref) ? $encoder->encode($_) : $_ } @$enum;
-  return E $path, [enum => enum => $enum];
+    $enum = join ', ',
+      map { ( !defined or ref ) ? $encoder->encode($_) : $_ } @$enum;
+    return E $path, [ enum => enum => $enum ];
 }
 
 sub _validate_type_const {
-  my ($self, $data, $path, $schema) = @_;
-  my $const = $schema->{const};
+    my ( $self, $data, $path, $schema ) = @_;
+    my $const = $schema->{const};
 
-  return if data_checksum($data) eq data_checksum($const);
-  return E $path, [const => const => $encoder->encode($const)];
+    return if data_checksum($data) eq data_checksum($const);
+    return E $path, [ const => const => $encoder->encode($const) ];
 }
 
 sub _validate_format {
-  my ($self, $value, $path, $schema) = @_;
-  my $code = $self->formats->{$schema->{format}};
-  return do { warn "Format rule for '$schema->{format}' is missing"; return } unless $code;
-  return unless my $err = $code->($value);
-  return E $path, [format => $schema->{format}, $err];
+    my ( $self, $value, $path, $schema ) = @_;
+    my $code = $self->formats->{ $schema->{format} };
+    return
+      do { warn "Format rule for '$schema->{format}' is missing"; return }
+      unless $code;
+    return unless my $err = $code->($value);
+    return E $path, [ format => $schema->{format}, $err ];
 }
 
 sub _validate_type_any { }
 
 sub _validate_type_array {
-  my ($self, $data, $path, $schema) = @_;
-  my @errors;
+    my ( $self, $data, $path, $schema ) = @_;
+    my @errors;
 
-  if (ref $data ne 'ARRAY') {
-    return E $path, [array => type => data_type $data];
-  }
-  if (defined $schema->{minItems} and $schema->{minItems} > @$data) {
-    push @errors, E $path, [array => minItems => int(@$data), $schema->{minItems}];
-  }
-  if (defined $schema->{maxItems} and $schema->{maxItems} < @$data) {
-    push @errors, E $path, [array => maxItems => int(@$data), $schema->{maxItems}];
-  }
-  if ($schema->{uniqueItems}) {
-    my %uniq;
-    for (@$data) {
-      next if !$uniq{data_checksum($_)}++;
-      push @errors, E $path, [array => 'uniqueItems'];
-      last;
+    if ( ref $data ne 'ARRAY' ) {
+        return E $path, [ array => type => data_type $data];
     }
-  }
-
-  if (exists $schema->{contains}) {
-    my @e;
-    for my $i (0 .. @$data - 1) {
-      my @tmp = $self->_validate($data->[$i], "$path/$i", $schema->{contains});
-      push @e, \@tmp if @tmp;
+    if ( defined $schema->{minItems} and $schema->{minItems} > @$data ) {
+        push @errors, E $path,
+          [ array => minItems => int(@$data), $schema->{minItems} ];
     }
-    push @errors, map {@$_} @e if @e >= @$data;
-    push @errors, E $path, [array => 'contains'] if not @$data;
-  }
-
-  if (ref $schema->{items} eq 'ARRAY') {
-    my $additional_items = $schema->{additionalItems} // {};
-    my @rules            = @{$schema->{items}};
-
-    if ($additional_items) {
-      push @rules, $additional_items while @rules < @$data;
+    if ( defined $schema->{maxItems} and $schema->{maxItems} < @$data ) {
+        push @errors, E $path,
+          [ array => maxItems => int(@$data), $schema->{maxItems} ];
+    }
+    if ( $schema->{uniqueItems} ) {
+        my %uniq;
+        for (@$data) {
+            next if !$uniq{ data_checksum($_) }++;
+            push @errors, E $path, [ array => 'uniqueItems' ];
+            last;
+        }
     }
 
-    if (@rules >= @$data) {
-      for my $i (0 .. @$data - 1) {
-        push @errors, $self->_validate($data->[$i], "$path/$i", $rules[$i]);
-      }
+    if ( exists $schema->{contains} ) {
+        my @e;
+        for my $i ( 0 .. @$data - 1 ) {
+            my @tmp = $self->_validate(
+                $data->[$i], "$path/$i",
+                $schema->{contains}
+            );
+            push @e, \@tmp if @tmp;
+        }
+        push @errors, map {@$_} @e if @e >= @$data;
+        push @errors, E $path, [ array => 'contains' ] if not @$data;
     }
-    elsif (!$additional_items) {
-      push @errors, E $path, [array => additionalItems => int(@$data), int(@rules)];
-    }
-  }
-  elsif (exists $schema->{items}) {
-    for my $i (0 .. @$data - 1) {
-      push @errors, $self->_validate($data->[$i], "$path/$i", $schema->{items});
-    }
-  }
 
-  return @errors;
+    if ( ref $schema->{items} eq 'ARRAY' ) {
+        my $additional_items = $schema->{additionalItems} // {};
+        my @rules            = @{ $schema->{items} };
+
+        if ($additional_items) {
+            push @rules, $additional_items while @rules < @$data;
+        }
+
+        if ( @rules >= @$data ) {
+            for my $i ( 0 .. @$data - 1 ) {
+                push @errors,
+                  $self->_validate( $data->[$i], "$path/$i", $rules[$i] );
+            }
+        }
+        elsif ( !$additional_items ) {
+            push @errors, E $path,
+              [ array => additionalItems => int(@$data), int(@rules) ];
+        }
+    }
+    elsif ( exists $schema->{items} ) {
+        for my $i ( 0 .. @$data - 1 ) {
+            push @errors,
+              $self->_validate( $data->[$i], "$path/$i", $schema->{items} );
+        }
+    }
+
+    return @errors;
 }
 
 sub _validate_type_boolean {
-  my ($self, $value, $path, $schema) = @_;
+    my ( $self, $value, $path, $schema ) = @_;
 
-  # String that looks like a boolean
-  if (defined $value and $self->{coerce}{booleans}) {
-    $_[1] = JSON->false if $value =~ m!^(0|false|)$!;
-    $_[1] = JSON->true  if $value =~ m!^(1|true)$!;
-  }
+    # String that looks like a boolean
+    if ( defined $value and $self->should_coerce('booleans') ) {
+        $_[1] = JSON->false if $value =~ m!^(0|false|)$!;
+        $_[1] = JSON->true  if $value =~ m!^(1|true)$!;
+    }
 
-  return if is_type $_[1], 'BOOL';
-  return E $path, [boolean => type => data_type $value];
+    return if is_type $_[1], 'BOOL';
+    return E $path, [ boolean => type => data_type $value];
 }
 
 sub _validate_type_integer {
-  my ($self, $value, $path, $schema) = @_;
-  my @errors = $self->_validate_type_number($_[1], $path, $schema, 'integer');
+    my ( $self, $value, $path, $schema ) = @_;
+    my @errors
+      = $self->_validate_type_number( $_[1], $path, $schema, 'integer' );
 
-  return @errors if @errors;
-  return         if $value =~ /^-?\d+$/;
-  return E $path, [integer => type => data_type $value];
+    return @errors if @errors;
+    return if $value =~ /^-?\d+$/;
+    return E $path, [ integer => type => data_type $value];
 }
 
 sub _validate_type_null {
-  my ($self, $value, $path, $schema) = @_;
+    my ( $self, $value, $path, $schema ) = @_;
 
-  return unless defined $value;
-  return E $path, [null => type => data_type $value];
+    return unless defined $value;
+    return E $path, [ null => type => data_type $value];
 }
 
 sub _validate_type_number {
-  my ($self, $value, $path, $schema, $expected) = @_;
-  my @errors;
+    my ( $self, $value, $path, $schema, $expected ) = @_;
+    my @errors;
 
-  $expected ||= 'number';
+    $expected ||= 'number';
 
-  if (!defined $value or ref $value) {
-    return E $path, [$expected => type => data_type $value];
-  }
-  unless (is_type $value, 'NUM') {
-    return E $path, [$expected => type => data_type $value]
-      if !$self->{coerce}{numbers} or $value !~ /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
-    $_[1] = 0 + $value;    # coerce input value
-  }
+    if ( !defined $value or ref $value ) {
+        return E $path, [ $expected => type => data_type $value];
+    }
+    unless ( is_type $value, 'NUM' ) {
+        return E $path, [ $expected => type => data_type $value]
+          if !$self->should_coerce('numbers')
+          or $value !~ /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+        $_[1] = 0 + $value;    # coerce input value
+    }
 
-  push @errors, $self->_validate_format($value, $path, $schema) if $schema->{format};
-  push @errors, $self->_validate_number_max($value, $path, $schema, $expected);
-  push @errors, $self->_validate_number_min($value, $path, $schema, $expected);
+    push @errors, $self->_validate_format( $value, $path, $schema )
+      if $schema->{format};
+    push @errors,
+      $self->_validate_number_max( $value, $path, $schema, $expected );
+    push @errors,
+      $self->_validate_number_min( $value, $path, $schema, $expected );
 
-  my $d = $schema->{multipleOf};
-  push @errors, E $path, [$expected => multipleOf => $d] if $d and ($value / $d) =~ /\.[^0]+$/;
+    my $d = $schema->{multipleOf};
+    push @errors, E $path, [ $expected => multipleOf => $d ]
+      if $d and ( $value / $d ) =~ /\.[^0]+$/;
 
-  return @errors;
+    return @errors;
 }
 
 sub _validate_type_object {
-  my ($self, $data, $path, $schema) = @_;
+    my ( $self, $data, $path, $schema ) = @_;
 
-  return E $path, [object => type => data_type $data] unless ref $data eq 'HASH';
+    return E $path, [ object => type => data_type $data]
+      unless ref $data eq 'HASH';
 
-  my @errors;
-  my @dkeys = sort keys %$data;
-  if (defined $schema->{maxProperties} and $schema->{maxProperties} < @dkeys) {
-    push @errors, E $path, [object => maxProperties => int(@dkeys), $schema->{maxProperties}];
-  }
-  if (defined $schema->{minProperties} and $schema->{minProperties} > @dkeys) {
-    push @errors, E $path, [object => minProperties => int(@dkeys), $schema->{minProperties}];
-  }
-  if (exists $schema->{propertyNames}) {
-    for my $name (keys %$data) {
-      next unless my @e = $self->_validate($name, $path, $schema->{propertyNames});
-      push @errors, prefix_errors propertyName => map [$name, $_], @e;
+    my @errors;
+    my @dkeys = sort keys %$data;
+    if ( defined $schema->{maxProperties}
+        and $schema->{maxProperties} < @dkeys )
+    {
+        push @errors, E $path,
+          [ object => maxProperties => int(@dkeys),
+            $schema->{maxProperties}
+          ];
     }
-  }
-
-  my %rules;
-  for my $k (keys %{$schema->{properties} || {}}) {
-    my $r = $schema->{properties}{$k};
-    push @{$rules{$k}}, $r;
-    if ($self->{coerce}{defaults} and ref $r eq 'HASH' and exists $r->{default} and !exists $data->{$k}) {
-      $data->{$k} = $r->{default};
+    if ( defined $schema->{minProperties}
+        and $schema->{minProperties} > @dkeys )
+    {
+        push @errors, E $path,
+          [ object => minProperties => int(@dkeys),
+            $schema->{minProperties}
+          ];
     }
-  }
-
-  for my $p (keys %{$schema->{patternProperties} || {}}) {
-    my $r = $schema->{patternProperties}{$p};
-    push @{$rules{$_}}, $r for sort grep { $_ =~ /$p/ } @dkeys;
-  }
-
-  my $additional = exists $schema->{additionalProperties} ? $schema->{additionalProperties} : {};
-  if ($additional) {
-    $additional = {} unless is_type $additional, 'HASH';
-    $rules{$_} ||= [$additional] for @dkeys;
-  }
-  elsif (my @k = grep { !$rules{$_} } @dkeys) {
-    local $" = ', ';
-    return E $path, [object => additionalProperties => join ', ', sort @k];
-  }
-
-  for my $k (sort { $a cmp $b } uniq @{$schema->{required} || []}) {
-    next if exists $data->{$k};
-    push @errors, E json_pointer($path, $k), [object => 'required'];
-    delete $rules{$k};
-  }
-
-  my $dependencies = $schema->{dependencies} || {};
-  for my $k (keys %$dependencies) {
-    next if not exists $data->{$k};
-    if (ref $dependencies->{$k} eq 'ARRAY') {
-      push @errors,
-        map { E json_pointer($path, $_), [object => dependencies => $k] }
-        grep { !exists $data->{$_} } @{$dependencies->{$k}};
+    if ( exists $schema->{propertyNames} ) {
+        for my $name ( keys %$data ) {
+            next
+              unless my @e
+              = $self->_validate( $name, $path, $schema->{propertyNames} );
+            push @errors, prefix_errors propertyName => map [ $name, $_ ], @e;
+        }
     }
-    elsif (ref $dependencies->{$k} eq 'HASH') {
-      push @errors, $self->_validate_type_object($data, $path, $schema->{dependencies}{$k});
-    }
-  }
 
-  for my $k (sort keys %rules) {
-    for my $r (@{$rules{$k}}) {
-      next unless exists $data->{$k};
-      $r = $self->_ref_to_schema($r);
-      my @e = $self->_validate($data->{$k}, json_pointer($path, $k), $r);
-      push @errors, @e;
-      next if @e or !is_type $r, 'HASH';
-      push @errors, $self->_validate_type_enum($data->{$k}, json_pointer($path, $k), $r)  if $r->{enum};
-      push @errors, $self->_validate_type_const($data->{$k}, json_pointer($path, $k), $r) if $r->{const};
+    my %rules;
+    for my $k ( keys %{ $schema->{properties} || {} } ) {
+        my $r = $schema->{properties}{$k};
+        push @{ $rules{$k} }, $r;
+        if (    $self->should_coerce('defaults')
+            and ref $r eq 'HASH'
+            and exists $r->{default}
+            and !exists $data->{$k} )
+        {
+            $data->{$k} = $r->{default};
+        }
     }
-  }
 
-  return @errors;
+    for my $p ( keys %{ $schema->{patternProperties} || {} } ) {
+        my $r = $schema->{patternProperties}{$p};
+        push @{ $rules{$_} }, $r for sort grep { $_ =~ /$p/ } @dkeys;
+    }
+
+    my $additional
+      = exists $schema->{additionalProperties}
+      ? $schema->{additionalProperties}
+      : {};
+    if ($additional) {
+        $additional = {} unless is_type $additional, 'HASH';
+        $rules{$_} ||= [$additional] for @dkeys;
+    }
+    elsif ( my @k = grep { !$rules{$_} } @dkeys ) {
+        local $" = ', ';
+        return E $path,
+          [ object => additionalProperties => join ', ', sort @k ];
+    }
+
+    for my $k ( sort { $a cmp $b } uniq @{ $schema->{required} || [] } ) {
+        next if exists $data->{$k};
+        push @errors, E json_pointer( $path, $k ), [ object => 'required' ];
+        delete $rules{$k};
+    }
+
+    my $dependencies = $schema->{dependencies} || {};
+    for my $k ( keys %$dependencies ) {
+        next if not exists $data->{$k};
+        if ( ref $dependencies->{$k} eq 'ARRAY' ) {
+            push @errors,
+              map {
+                E json_pointer( $path, $_ ),
+                  [ object => dependencies => $k ]
+              }
+              grep { !exists $data->{$_} } @{ $dependencies->{$k} };
+        }
+        elsif ( ref $dependencies->{$k} eq 'HASH' ) {
+            push @errors,
+              $self->_validate_type_object(
+                $data, $path,
+                $schema->{dependencies}{$k}
+              );
+        }
+    }
+
+    for my $k ( sort keys %rules ) {
+        for my $r ( @{ $rules{$k} } ) {
+            next unless exists $data->{$k};
+            $r = $self->_ref_to_schema($r);
+            my @e = $self->_validate(
+                $data->{$k}, json_pointer( $path, $k ),
+                $r
+            );
+            push @errors, @e;
+            next if @e or !is_type $r, 'HASH';
+            push @errors,
+              $self->_validate_type_enum(
+                $data->{$k},
+                json_pointer( $path, $k ), $r
+              ) if $r->{enum};
+            push @errors,
+              $self->_validate_type_const(
+                $data->{$k},
+                json_pointer( $path, $k ), $r
+              ) if $r->{const};
+        }
+    }
+
+    return @errors;
 }
 
 sub _validate_type_string {
-  my ($self, $value, $path, $schema) = @_;
-  my @errors;
+    my ( $self, $value, $path, $schema ) = @_;
+    my @errors;
 
-  if (!$schema->{type} and !defined $value) {
-    return;
-  }
-  if (!defined $value or ref $value) {
-    return E $path, [string => type => data_type $value];
-  }
-  if (B::svref_2object(\$value)->FLAGS & (B::SVp_IOK | B::SVp_NOK) and 0 + $value eq $value and $value * 0 == 0) {
-    return E $path, [string => type => data_type $value] unless $self->{coerce}{strings};
-    $_[1] = "$value";    # coerce input value
-  }
-  if ($schema->{format}) {
-    push @errors, $self->_validate_format($value, $path, $schema);
-  }
-  if (defined $schema->{maxLength}) {
-    if (length($value) > $schema->{maxLength}) {
-      push @errors, E $path, [string => maxLength => length($value), $schema->{maxLength}];
+    if ( !$schema->{type} and !defined $value ) {
+        return;
     }
-  }
-  if (defined $schema->{minLength}) {
-    if (length($value) < $schema->{minLength}) {
-      push @errors, E $path, [string => minLength => length($value), $schema->{minLength}];
+    if ( !defined $value or ref $value ) {
+        return E $path, [ string => type => data_type $value];
     }
-  }
-  if (defined $schema->{pattern}) {
-    my $p = $schema->{pattern};
-    push @errors, E $path, [string => pattern => $p] unless $value =~ /$p/;
-  }
+    if (    B::svref_2object( \$value )->FLAGS & ( B::SVp_IOK | B::SVp_NOK )
+        and 0 + $value eq $value
+        and $value * 0 == 0 )
+    {
+        return E $path, [ string => type => data_type $value]
+          unless $self->should_coerce('strings');
+        $_[1] = "$value";    # coerce input value
+    }
+    if ( $schema->{format} ) {
+        push @errors, $self->_validate_format( $value, $path, $schema );
+    }
+    if ( defined $schema->{maxLength} ) {
+        if ( length($value) > $schema->{maxLength} ) {
+            push @errors, E $path,
+              [ string => maxLength => length($value), $schema->{maxLength} ];
+        }
+    }
+    if ( defined $schema->{minLength} ) {
+        if ( length($value) < $schema->{minLength} ) {
+            push @errors, E $path,
+              [ string => minLength => length($value), $schema->{minLength} ];
+        }
+    }
+    if ( defined $schema->{pattern} ) {
+        my $p = $schema->{pattern};
+        push @errors, E $path, [ string => pattern => $p ]
+          unless $value =~ /$p/;
+    }
 
-  return @errors;
+    return @errors;
 }
 
 1;
@@ -1071,6 +1264,59 @@ DEPRECATED.
 
 Proxy attribtue for L<JSON::Validator::Store/cache_paths>.
 
+=head2 coerce
+
+    my $jv = JSON::Validator->new(
+        coerce => { booleans => 1, numbers => 1 },
+        ...
+    );
+
+    $jv->coerce( { booleans => 1 } );
+
+    my $hash_ref = $jv->coerce;
+
+    $jv->should_coerce('numbers');  # preferred to $jv->coerce->{numbers}
+
+Also accepts a comma-separated list:
+
+    $jv->coerce('booleans,defaults,numbers,strings');
+
+Which can also be abbreviated:
+
+    $jv->coerce('bool,def,num,str');
+
+Set the given types to coerce. Before enabling coercion this module is very
+strict when it comes to validating types. Example: The string C<"1"> is not
+the same as the number C<1>, unless you have "numbers" coercion enabled.
+
+=over
+
+=item * booleans
+
+Will convert what looks can be interpreted as a boolean (that is, an actual
+numeric C<1> or C<0>, and the strings "true" and "false") to a
+L<JSON::PP::Boolean> object. Note that "foo" is not considered a true value and
+will fail the validation.
+
+=item * defaults
+
+Will copy the default value defined in the schema, into the input structure,
+if the input value is non-existing.
+
+Note that support for "defaults" is currently EXPERIMENTAL, and enabling this
+might be changed in future versions.
+
+=item * numbers
+
+Will convert strings that looks like numbers, into true numbers. This works for
+both the "integer" and "number" types.
+
+=item * strings
+
+Will convert a number into a string. This works for the "string" type.
+
+=back
+
 =head2 formats
 
   my $hash_ref  = $jv->formats;
@@ -1123,44 +1369,6 @@ DEPRECATED.
 Used to create a new schema, where there are no "$ref" pointing to external
 resources. This means that all the "$ref" that are found, will be moved into
 the "definitions" key, in the returned C<$schema>.
-
-=head2 coerce
-
-  my $jv       = $jv->coerce('bool,def,num,str');
-  my $jv       = $jv->coerce('booleans,defaults,numbers,strings');
-  my $hash_ref = $jv->coerce;
-
-Set the given type to coerce. Before enabling coercion this module is very
-strict when it comes to validating types. Example: The string C<"1"> is not
-the same as the number C<1>, unless you have "numbers" coercion enabled.
-
-=over 2
-
-=item * booleans
-
-Will convert what looks can be interpreted as a boolean (that is, an actual
-numeric C<1> or C<0>, and the strings "true" and "false") to a
-L<JSON::PP::Boolean> object. Note that "foo" is not considered a true value and
-will fail the validation.
-
-=item * defaults
-
-Will copy the default value defined in the schema, into the input structure,
-if the input value is non-existing.
-
-Note that support for "default" is currently EXPERIMENTAL, and enabling this
-might be changed in future versions.
-
-=item * numbers
-
-Will convert strings that looks like numbers, into true numbers. This works for
-both the "integer" and "number" types.
-
-=item * strings
-
-Will convert a number into a string. This works for the "string" type.
-
-=back
 
 =head2 get
 

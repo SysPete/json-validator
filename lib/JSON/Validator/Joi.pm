@@ -15,56 +15,61 @@ require JSON::Validator;
 has enum                                   => sub { +[] };
 has [qw(format max min multiple_of regex)] => undef;
 has type                                   => 'object';
-has validator                              => sub { JSON::Validator->new->coerce('booleans,numbers,strings') };
+has validator =>
+  sub { JSON::Validator->new->coerce('booleans,numbers,strings') };
 
 for my $attr (qw(required strict unique)) {
-  Sub::Install::install_sub(
-    {
-      code => sub { $_[0]->{$attr} = $_[1] // 1; $_[0]; },
-      as   => $attr,
-    }
-  );
+    Sub::Install::install_sub(
+        {
+            code => sub { $_[0]->{$attr} = $_[1] // 1; $_[0]; },
+            as   => $attr,
+        }
+    );
 }
 
 sub alphanum { shift->_type('string')->regex('^\w*$') }
 sub boolean  { shift->type('boolean') }
 
 sub compile {
-  my $self   = shift;
-  my $merged = {};
+    my $self   = shift;
+    my $merged = {};
 
-  for (ref $self->type eq 'ARRAY' ? @{$self->type} : $self->type) {
-    my $method   = "_compile_$_";
-    my $compiled = $self->$method;
-    @$merged{keys %$compiled} = values %$compiled;
-  }
+    for ( ref $self->type eq 'ARRAY' ? @{ $self->type } : $self->type ) {
+        my $method   = "_compile_$_";
+        my $compiled = $self->$method;
+        @$merged{ keys %$compiled } = values %$compiled;
+    }
 
-  return $merged;
+    return $merged;
 }
 
 sub date_time { shift->_type('string')->format('date-time') }
 sub email     { shift->_type('string')->format('email') }
 
 sub extend {
-  my ($self, $by) = @_;
-  die "Cannot extend joi '@{[$self->type]}' by '@{[$by->type]}'" unless $self->type eq $by->type;
+    my ( $self, $by ) = @_;
+    die "Cannot extend joi '@{[$self->type]}' by '@{[$by->type]}'"
+      unless $self->type eq $by->type;
 
-  my $clone = shift->new(dclone($self));
+    my $clone = shift->new( dclone($self) );
 
-  for my $key (keys %$by) {
-    my $ref = ref $by->{$key};
-    $clone->{$key} = $by->{$key} unless $ref eq 'ARRAY' or $ref eq 'HASH';
-  }
+    for my $key ( keys %$by ) {
+        my $ref = ref $by->{$key};
+        $clone->{$key} = $by->{$key} unless $ref eq 'ARRAY' or $ref eq 'HASH';
+    }
 
-  if ($self->type eq 'array') {
-    $clone->{items} = dclone($by->{items}) if $by->{items};
-  }
-  elsif ($self->type eq 'object') {
-    $clone->{required} = [uniq @{$clone->{required}}, @{$by->{required}}] if ref $by->{required} eq 'ARRAY';
-    $clone->{properties}{$_} = dclone($by->{properties}{$_}) for keys %{$by->{properties} || {}};
-  }
+    if ( $self->type eq 'array' ) {
+        $clone->{items} = dclone( $by->{items} ) if $by->{items};
+    }
+    elsif ( $self->type eq 'object' ) {
+        $clone->{required}
+          = [ uniq @{ $clone->{required} }, @{ $by->{required} } ]
+          if ref $by->{required} eq 'ARRAY';
+        $clone->{properties}{$_} = dclone( $by->{properties}{$_} )
+          for keys %{ $by->{properties} || {} };
+    }
 
-  return $clone;
+    return $clone;
 }
 
 sub array     { shift->type('array') }
@@ -72,7 +77,7 @@ sub integer   { shift->type('integer') }
 sub iso_date  { shift->date_time }
 sub items     { $_[0]->{items} = $_[1]; $_[0] }
 sub joi       { __PACKAGE__->new(@_) }
-sub length    { shift->min($_[0])->max($_[0]) }
+sub length    { shift->min( $_[0] )->max( $_[0] ) }
 sub lowercase { shift->_type('string')->regex('^\p{Lowercase}*$') }
 sub negative  { shift->_type('number')->max(0) }
 sub number    { shift->type('number') }
@@ -81,15 +86,15 @@ sub pattern   { shift->regex(@_) }
 sub positive  { shift->number->min(0) }
 
 sub props {
-  my $self       = shift->type('object');
-  my %properties = ref $_[0] ? %{$_[0]} : @_;
+    my $self       = shift->type('object');
+    my %properties = ref $_[0] ? %{ $_[0] } : @_;
 
-  while (my ($name, $property) = each %properties) {
-    push @{$self->{required}}, $name if $property->{required};
-    $self->{properties}{$name} = $property->compile;
-  }
+    while ( my ( $name, $property ) = each %properties ) {
+        push @{ $self->{required} }, $name if $property->{required};
+        $self->{properties}{$name} = $property->compile;
+    }
 
-  return $self;
+    return $self;
 }
 
 sub string    { shift->type('string') }
@@ -98,71 +103,75 @@ sub uppercase { shift->_type('string')->regex('^\p{Uppercase}*$') }
 sub uri       { shift->_type('string')->format('uri') }
 
 sub validate {
-  my ($self, $data) = @_;
-  return $self->validator->validate($data, $self->compile);
+    my ( $self, $data ) = @_;
+    return $self->validator->validate( $data, $self->compile );
 }
 
 sub _compile_array {
-  my $self = shift;
-  my $json = {type => $self->type};
+    my $self = shift;
+    my $json = { type => $self->type };
 
-  $json->{additionalItems} = JSON->false    if $self->{strict};
-  $json->{items}           = $self->{items} if $self->{items};
-  $json->{maxItems}        = $self->{max}   if defined $self->{max};
-  $json->{minItems}        = $self->{min}   if defined $self->{min};
-  $json->{uniqueItems}     = JSON->true     if $self->{unique};
+    $json->{additionalItems} = JSON->false    if $self->{strict};
+    $json->{items}           = $self->{items} if $self->{items};
+    $json->{maxItems}        = $self->{max}   if defined $self->{max};
+    $json->{minItems}        = $self->{min}   if defined $self->{min};
+    $json->{uniqueItems}     = JSON->true     if $self->{unique};
 
-  return $json;
+    return $json;
 }
 
-sub _compile_boolean { +{type => 'boolean'} }
+sub _compile_boolean { +{ type => 'boolean' } }
 
 sub _compile_integer { shift->_compile_number }
 
-sub _compile_null { {type => shift->type} }
+sub _compile_null { { type => shift->type } }
 
 sub _compile_number {
-  my $self = shift;
-  my $json = {type => $self->type};
+    my $self = shift;
+    my $json = { type => $self->type };
 
-  $json->{enum}       = $self->{enum}        if defined $self->{enum} and @{$self->{enum}};
-  $json->{maximum}    = $self->{max}         if defined $self->{max};
-  $json->{minimum}    = $self->{min}         if defined $self->{min};
-  $json->{multipleOf} = $self->{multiple_of} if defined $self->{multiple_of};
+    $json->{enum} = $self->{enum}
+      if defined $self->{enum} and @{ $self->{enum} };
+    $json->{maximum} = $self->{max} if defined $self->{max};
+    $json->{minimum} = $self->{min} if defined $self->{min};
+    $json->{multipleOf} = $self->{multiple_of}
+      if defined $self->{multiple_of};
 
-  return $json;
+    return $json;
 }
 
 sub _compile_object {
-  my $self = shift;
-  my $json = {type => $self->type};
+    my $self = shift;
+    my $json = { type => $self->type };
 
-  $json->{additionalProperties} = JSON->false         if $self->{strict};
-  $json->{maxProperties}        = $self->{max}        if defined $self->{max};
-  $json->{minProperties}        = $self->{min}        if defined $self->{min};
-  $json->{patternProperties}    = $self->{regex}      if $self->{regex};
-  $json->{properties}           = $self->{properties} if ref $self->{properties} eq 'HASH';
-  $json->{required}             = $self->{required}   if ref $self->{required} eq 'ARRAY';
+    $json->{additionalProperties} = JSON->false    if $self->{strict};
+    $json->{maxProperties}        = $self->{max}   if defined $self->{max};
+    $json->{minProperties}        = $self->{min}   if defined $self->{min};
+    $json->{patternProperties}    = $self->{regex} if $self->{regex};
+    $json->{properties}           = $self->{properties}
+      if ref $self->{properties} eq 'HASH';
+    $json->{required} = $self->{required} if ref $self->{required} eq 'ARRAY';
 
-  return $json;
+    return $json;
 }
 
 sub _compile_string {
-  my $self = shift;
-  my $json = {type => $self->type};
+    my $self = shift;
+    my $json = { type => $self->type };
 
-  $json->{enum}      = $self->{enum}   if defined $self->{enum} and @{$self->{enum}};
-  $json->{format}    = $self->{format} if defined $self->{format};
-  $json->{maxLength} = $self->{max}    if defined $self->{max};
-  $json->{minLength} = $self->{min}    if defined $self->{min};
-  $json->{pattern}   = $self->{regex}  if defined $self->{regex};
+    $json->{enum} = $self->{enum}
+      if defined $self->{enum} and @{ $self->{enum} };
+    $json->{format}    = $self->{format} if defined $self->{format};
+    $json->{maxLength} = $self->{max}    if defined $self->{max};
+    $json->{minLength} = $self->{min}    if defined $self->{min};
+    $json->{pattern}   = $self->{regex}  if defined $self->{regex};
 
-  return $json;
+    return $json;
 }
 
 sub _type {
-  $_[0]->{type} = $_[1] unless $_[0]->{type};
-  return $_[0];
+    $_[0]->{type} = $_[1] unless $_[0]->{type};
+    return $_[0];
 }
 
 sub TO_JSON { shift->compile }

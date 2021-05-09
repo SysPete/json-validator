@@ -19,11 +19,11 @@ has '+specification' => (
 
 # some methods are shared with OpenAPIv2
 Sub::Install::install_sub(
-  {
-    code => JSON::Validator::Schema::OpenAPIv2->can($_),
-    as   => $_,
-  }
-) for qw(coerce routes validate_request validate_response),
+    {
+        code => JSON::Validator::Schema::OpenAPIv2->can($_),
+        as   => $_,
+    }
+  ) for qw(_build_coerce routes validate_request validate_response),
   qw(_coerce_arrays _coerce_default_value _find_all_nodes _prefix_error_path _validate_request_or_response);
 
 sub BUILD {
@@ -32,318 +32,385 @@ sub BUILD {
 }
 
 sub parameters_for_request {
-  my $self = shift;
-  my ($method, $path) = (lc $_[0][0], $_[0][1]);
+    my $self = shift;
+    my ( $method, $path ) = ( lc $_[0][0], $_[0][1] );
 
-  my $cache_key = "parameters_for_request:$method:$path";
-  return $self->{cache}{$cache_key} if $self->{cache}{$cache_key};
-  return undef unless $self->get([paths => $path, $method]);
+    my $cache_key = "parameters_for_request:$method:$path";
+    return $self->{cache}{$cache_key} if $self->{cache}{$cache_key};
+    return undef unless $self->get( [ paths => $path, $method ] );
 
-  my @parameters = map {@$_} $self->_find_all_nodes([paths => $path, $method], 'parameters');
-  for my $param (@parameters) {
-    $param->{type} ||= schema_type($param->{schema});
-  }
+    my @parameters = map {@$_}
+      $self->_find_all_nodes( [ paths => $path, $method ], 'parameters' );
+    for my $param (@parameters) {
+        $param->{type} ||= schema_type( $param->{schema} );
+    }
 
-  if (my $request_body = $self->get([paths => $path, $method, 'requestBody'])) {
-    my @accepts = sort keys %{$request_body->{content} || {}};
-    push @parameters,
-      {
-      accepts  => \@accepts,
-      content  => $request_body->{content},
-      in       => 'body',
-      name     => 'body',
-      required => $request_body->{required},
-      };
-  }
+    if ( my $request_body
+        = $self->get( [ paths => $path, $method, 'requestBody' ] ) )
+    {
+        my @accepts = sort keys %{ $request_body->{content} || {} };
+        push @parameters,
+          {
+            accepts  => \@accepts,
+            content  => $request_body->{content},
+            in       => 'body',
+            name     => 'body',
+            required => $request_body->{required},
+          };
+    }
 
-  return $self->{cache}{$cache_key} = \@parameters;
+    return $self->{cache}{$cache_key} = \@parameters;
 }
 
 sub parameters_for_response {
-  my $self = shift;
-  my ($method, $path, $status) = (lc $_[0][0], $_[0][1], $_[0][2] || 200);
+    my $self = shift;
+    my ( $method, $path, $status )
+      = ( lc $_[0][0], $_[0][1], $_[0][2] || 200 );
 
-  $status ||= 200;
-  my $cache_key = "parameters_for_response:$method:$path:$status";
-  return $self->{cache}{$cache_key} if $self->{cache}{$cache_key};
+    $status ||= 200;
+    my $cache_key = "parameters_for_response:$method:$path:$status";
+    return $self->{cache}{$cache_key} if $self->{cache}{$cache_key};
 
-  my $responses = $self->get([paths => $path, $method, 'responses']);
-  my $response  = $responses->{$status} || $responses->{default};
-  return undef unless $response;
+    my $responses = $self->get( [ paths => $path, $method, 'responses' ] );
+    my $response  = $responses->{$status} || $responses->{default};
+    return undef unless $response;
 
-  my @parameters;
-  if (my $headers = $response->{headers}) {
-    push @parameters, map { +{%{$headers->{$_}}, in => 'header', name => $_} } sort keys %$headers;
-  }
+    my @parameters;
+    if ( my $headers = $response->{headers} ) {
+        push @parameters,
+          map { +{ %{ $headers->{$_} }, in => 'header', name => $_ } }
+          sort keys %$headers;
+    }
 
-  if (my @accepts = sort keys %{$response->{content} || {}}) {
-    push @parameters, {accepts => \@accepts, content => $response->{content}, in => 'body', name => 'body'};
-  }
+    if ( my @accepts = sort keys %{ $response->{content} || {} } ) {
+        push @parameters,
+          {
+            accepts => \@accepts, content => $response->{content},
+            in      => 'body',    name    => 'body'
+          };
+    }
 
-  return $self->{cache}{$cache_key} = \@parameters;
+    return $self->{cache}{$cache_key} = \@parameters;
 }
 
 sub _build_formats {
 
-  # TODO: Figure out if this is the correct list
-  return {
-    'binary'                => sub {undef},
-    'byte'                  => JSON::Validator::Formats->can('check_byte'),
-    'date'                  => JSON::Validator::Formats->can('check_date'),
-    'date-time'             => JSON::Validator::Formats->can('check_date_time'),
-    'double'                => JSON::Validator::Formats->can('check_double'),
-    'duration'              => JSON::Validator::Formats->can('check_duration'),
-    'email'                 => JSON::Validator::Formats->can('check_email'),
-    'float'                 => JSON::Validator::Formats->can('check_float'),
-    'hostname'              => JSON::Validator::Formats->can('check_hostname'),
-    'idn-email'             => JSON::Validator::Formats->can('check_idn_email'),
-    'idn-hostname'          => JSON::Validator::Formats->can('check_idn_hostname'),
-    'int32'                 => JSON::Validator::Formats->can('check_int32'),
-    'int64'                 => JSON::Validator::Formats->can('check_int64'),
-    'ipv4'                  => JSON::Validator::Formats->can('check_ipv4'),
-    'ipv6'                  => JSON::Validator::Formats->can('check_ipv6'),
-    'iri'                   => JSON::Validator::Formats->can('check_iri'),
-    'iri-reference'         => JSON::Validator::Formats->can('check_iri_reference'),
-    'json-pointer'          => JSON::Validator::Formats->can('check_json_pointer'),
-    'password'              => sub {undef},
-    'regex'                 => JSON::Validator::Formats->can('check_regex'),
-    'relative-json-pointer' => JSON::Validator::Formats->can('check_relative_json_pointer'),
-    'time'                  => JSON::Validator::Formats->can('check_time'),
-    'uri'                   => JSON::Validator::Formats->can('check_uri'),
-    'uri-reference'         => JSON::Validator::Formats->can('check_uri_reference'),
-    'uri-template'          => JSON::Validator::Formats->can('check_uri_template'),
-    'uuid'                  => JSON::Validator::Formats->can('check_uuid'),
-  };
+    # TODO: Figure out if this is the correct list
+    return {
+        'binary'       => sub {undef},
+        'byte'         => JSON::Validator::Formats->can('check_byte'),
+        'date'         => JSON::Validator::Formats->can('check_date'),
+        'date-time'    => JSON::Validator::Formats->can('check_date_time'),
+        'double'       => JSON::Validator::Formats->can('check_double'),
+        'duration'     => JSON::Validator::Formats->can('check_duration'),
+        'email'        => JSON::Validator::Formats->can('check_email'),
+        'float'        => JSON::Validator::Formats->can('check_float'),
+        'hostname'     => JSON::Validator::Formats->can('check_hostname'),
+        'idn-email'    => JSON::Validator::Formats->can('check_idn_email'),
+        'idn-hostname' => JSON::Validator::Formats->can('check_idn_hostname'),
+        'int32'        => JSON::Validator::Formats->can('check_int32'),
+        'int64'        => JSON::Validator::Formats->can('check_int64'),
+        'ipv4'         => JSON::Validator::Formats->can('check_ipv4'),
+        'ipv6'         => JSON::Validator::Formats->can('check_ipv6'),
+        'iri'          => JSON::Validator::Formats->can('check_iri'),
+        'iri-reference' =>
+          JSON::Validator::Formats->can('check_iri_reference'),
+        'json-pointer' => JSON::Validator::Formats->can('check_json_pointer'),
+        'password'     => sub {undef},
+        'regex'        => JSON::Validator::Formats->can('check_regex'),
+        'relative-json-pointer' =>
+          JSON::Validator::Formats->can('check_relative_json_pointer'),
+        'time' => JSON::Validator::Formats->can('check_time'),
+        'uri'  => JSON::Validator::Formats->can('check_uri'),
+        'uri-reference' =>
+          JSON::Validator::Formats->can('check_uri_reference'),
+        'uri-template' => JSON::Validator::Formats->can('check_uri_template'),
+        'uuid'         => JSON::Validator::Formats->can('check_uuid'),
+    };
 }
 
 sub _coerce_parameter_format {
-  my ($self, $val, $param) = @_;
-  return unless $val->{exists};
+    my ( $self, $val, $param ) = @_;
+    return unless $val->{exists};
 
-  my $in_style = {cookie => 'form', header => 'simple', path => 'simple', query => 'form'};
-  $param->{style} = $in_style->{$param->{in}} unless $param->{style};
-  return $self->_coerce_parameter_style_object_deep($val, $param) if $param->{style} eq 'deepObject';
+    my $in_style = {
+        cookie => 'form', header => 'simple', path => 'simple',
+        query  => 'form'
+    };
+    $param->{style} = $in_style->{ $param->{in} } unless $param->{style};
+    return $self->_coerce_parameter_style_object_deep( $val, $param )
+      if $param->{style} eq 'deepObject';
 
-  my $schema_type = schema_type $param;
-  return $self->_coerce_parameter_style_array($val, $param)  if $schema_type eq 'array';
-  return $self->_coerce_parameter_style_object($val, $param) if $schema_type eq 'object';
+    my $schema_type = schema_type $param;
+    return $self->_coerce_parameter_style_array( $val, $param )
+      if $schema_type eq 'array';
+    return $self->_coerce_parameter_style_object( $val, $param )
+      if $schema_type eq 'object';
 }
 
 sub _coerce_parameter_style_array {
-  my ($self, $val, $param) = @_;
-  my $style   = $param->{style};
-  my $explode = $param->{explode} // $param->{style} eq 'form' ? JSON->true : JSON->false;
-  my $re;
+    my ( $self, $val, $param ) = @_;
+    my $style   = $param->{style};
+    my $explode = $param->{explode}
+      // $param->{style} eq 'form' ? JSON->true : JSON->false;
+    my $re;
 
-  if ($style =~ m!^(form|pipeDelimited|spaceDelimited|simple)$!) {
-    return $val->{value} = ref $val->{value} eq 'ARRAY' ? $val->{value} : [$val->{value}] if $explode;
-    $re = $style eq 'pipeDelimited' ? qr{\|} : $style eq 'spaceDelimited' ? $re = qr{[ ]} : qr{,};
-  }
-  elsif ($style eq 'label') {
-    $re = qr{\.};
-    $re = qr{,} if $val->{value} =~ s/^$re// and !$explode;
-  }
-  elsif ($style eq 'matrix') {
-    $re = qr{;\Q$param->{name}\E=};
-    $re = qr{,} if $val->{value} =~ s/^$re// and !$explode;
-  }
+    if ( $style =~ m!^(form|pipeDelimited|spaceDelimited|simple)$! ) {
+        return $val->{value}
+          = ref $val->{value} eq 'ARRAY' ? $val->{value} : [ $val->{value} ]
+          if $explode;
+        $re
+          = $style eq 'pipeDelimited'  ? qr{\|}
+          : $style eq 'spaceDelimited' ? $re
+          = qr{[ ]}
+          : qr{,};
+    }
+    elsif ( $style eq 'label' ) {
+        $re = qr{\.};
+        $re = qr{,} if $val->{value} =~ s/^$re// and !$explode;
+    }
+    elsif ( $style eq 'matrix' ) {
+        $re = qr{;\Q$param->{name}\E=};
+        $re = qr{,} if $val->{value} =~ s/^$re// and !$explode;
+    }
 
-  return $val->{value} = [split($re, $val->{value})];
+    return $val->{value} = [ split( $re, $val->{value} ) ];
 }
 
 sub _coerce_parameter_style_object {
-  my ($self, $val, $param) = @_;
-  my $style   = $param->{style};
-  my $explode = $param->{explode} // (grep { $style eq $_ } qw(cookie query)) ? 1 : 0;
+    my ( $self, $val, $param ) = @_;
+    my $style   = $param->{style};
+    my $explode = $param->{explode}
+      // ( grep { $style eq $_ } qw(cookie query) ) ? 1 : 0;
 
-  if ($explode) {
-    return if $style eq 'form';
-    my $style_re = {label => qr{\.}, matrix => qr{;}, simple => qr{,}};
-    return unless my $re = $style_re->{$style};
-    return if $style eq 'matrix' && $val->{value} !~ s/^;//;
-    return if $style eq 'label'  && $val->{value} !~ s/^\.//;
+    if ($explode) {
+        return if $style eq 'form';
+        my $style_re = { label => qr{\.}, matrix => qr{;}, simple => qr{,} };
+        return unless my $re = $style_re->{$style};
+        return if $style eq 'matrix' && $val->{value} !~ s/^;//;
+        return if $style eq 'label'  && $val->{value} !~ s/^\.//;
 
-    # XXX do we need something cleverer here like URL::Encode ?
-    return $val->{value} = { map { decode('UTF-8', uri_unescape($_)) } map { split /=/ } split($re, $val->{value}) };
-  }
-  else {
-    my $style_re = {
-      form           => qr{,},
-      label          => qr{\.},
-      matrix         => qr{,},
-      pipeDelimited  => qr{\|},
-      simple         => qr{,},
-      spaceDelimited => qr{[ ]},
-    };
-    return unless my $re = $style_re->{$style};
-    return if $style eq 'matrix' && $val->{value} !~ s/^;\Q$param->{name}\E=//;
-    return if $style eq 'label'  && $val->{value} !~ s/^\.//;
-    return $val->{value} = { map { decode('UTF-8', uri_unescape($_)) } split($re, $val->{value}) };
-  }
+        # XXX do we need something cleverer here like URL::Encode ?
+        return $val->{value} = {
+            map { decode( 'UTF-8', uri_unescape($_) ) }
+            map { split /=/ } split( $re, $val->{value} )
+        };
+    }
+    else {
+        my $style_re = {
+            form           => qr{,},
+            label          => qr{\.},
+            matrix         => qr{,},
+            pipeDelimited  => qr{\|},
+            simple         => qr{,},
+            spaceDelimited => qr{[ ]},
+        };
+        return unless my $re = $style_re->{$style};
+        return
+          if $style eq 'matrix' && $val->{value} !~ s/^;\Q$param->{name}\E=//;
+        return if $style eq 'label' && $val->{value} !~ s/^\.//;
+        return $val->{value} = {
+            map { decode( 'UTF-8', uri_unescape($_) ) }
+              split( $re, $val->{value} )
+        };
+    }
 }
 
 sub _coerce_parameter_style_object_deep {
-  my ($self, $val, $param) = @_;
-  my %res;
+    my ( $self, $val, $param ) = @_;
+    my %res;
 
-  for my $k (keys %{$val->{value}}) {
-    next unless $k =~ /^\Q$param->{name}\E\[(.*)\]/;
+    for my $k ( keys %{ $val->{value} } ) {
+        next unless $k =~ /^\Q$param->{name}\E\[(.*)\]/;
 
-    my @path   = $k =~ m!\[([^]]*)\]!g;
-    my $values = ref $val->{value}{$k} eq 'ARRAY' ? $val->{value}{$k} : [$val->{value}{$k}];
-    my $node   = \%res;
-    while (defined(my $p = shift @path)) {
-      if (@path) {
-        my $next = $path[0] =~ m!^(|\d+)$! ? [] : {};
-        $node = ref $node eq 'ARRAY' ? ($node->[$p] ||= $next) : ($node->{$p} ||= $next);
-      }
-      elsif ($p eq '') {
-        @$node = @$values;
-      }
-      elsif ($p =~ /^\d+$/) {
-        $node->[$p] = $values->[0];
-      }
-      else {
-        $node->{$p} = @$values > 1 ? $values : $values->[0];
-      }
+        my @path = $k =~ m!\[([^]]*)\]!g;
+        my $values
+          = ref $val->{value}{$k} eq 'ARRAY'
+          ? $val->{value}{$k}
+          : [ $val->{value}{$k} ];
+        my $node = \%res;
+        while ( defined( my $p = shift @path ) ) {
+            if (@path) {
+                my $next = $path[0] =~ m!^(|\d+)$! ? [] : {};
+                $node
+                  = ref $node eq 'ARRAY'
+                  ? ( $node->[$p] ||= $next )
+                  : ( $node->{$p} ||= $next );
+            }
+            elsif ( $p eq '' ) {
+                @$node = @$values;
+            }
+            elsif ( $p =~ /^\d+$/ ) {
+                $node->[$p] = $values->[0];
+            }
+            else {
+                $node->{$p} = @$values > 1 ? $values : $values->[0];
+            }
+        }
     }
-  }
 
-  return $val->{value}  = \%res if %res;
-  return $val->{exists} = 0;
+    return $val->{value}  = \%res if %res;
+    return $val->{exists} = 0;
 }
 
 sub _definitions_path_for_ref {
-  my ($self, $ref) = @_;
-  if ( $ref->fqn =~ m!^.*#/(components/.+)$! ) {
-      my $path = $1;
-      $path =~ s{/[^/]+$}{};
-      return [split /\//, $path];
-  }
-  else {
-      return ['definitions']
-  }
+    my ( $self, $ref ) = @_;
+    if ( $ref->fqn =~ m!^.*#/(components/.+)$! ) {
+        my $path = $1;
+        $path =~ s{/[^/]+$}{};
+        return [ split /\//, $path ];
+    }
+    else {
+        return ['definitions'];
+    }
 }
 
 sub _get_parameter_value {
-  my ($self, $param, $get) = @_;
-  my $schema_type = schema_type $param;
-  my $name        = $param->{name};
-  $name = undef if $schema_type eq 'object' && $param->{explode} && ($param->{style} || '') =~ m!^(form|deepObject)$!;
+    my ( $self, $param, $get ) = @_;
+    my $schema_type = schema_type $param;
+    my $name        = $param->{name};
+    $name = undef
+      if $schema_type eq 'object'
+      && $param->{explode}
+      && ( $param->{style} || '' ) =~ m!^(form|deepObject)$!;
 
-  my $val = $get->{$param->{in}}->($name, $param);
-  @$val{qw(in name)} = (@$param{qw(in name)});
-  return $val;
+    my $val = $get->{ $param->{in} }->( $name, $param );
+    @$val{qw(in name)} = ( @$param{qw(in name)} );
+    return $val;
 }
 
-sub _to_list { ref $_[0] eq 'ARRAY' ? @{$_[0]} : $_[0] ? ($_[0]) : () }
+sub _to_list { ref $_[0] eq 'ARRAY' ? @{ $_[0] } : $_[0] ? ( $_[0] ) : () }
 
 sub _validate_body {
-  my ($self, $direction, $val, $param) = @_;
-  $val->{content_type} = $param->{accepts}[0] if !$val->{content_type} and @{$param->{accepts}};
+    my ( $self, $direction, $val, $param ) = @_;
+    $val->{content_type} = $param->{accepts}[0]
+      if !$val->{content_type} and @{ $param->{accepts} };
 
-  if ($val->{accept}) {
-    $val->{content_type} = negotiate_content_type($param->{accepts}, $val->{accept});
-    $val->{valid}        = $val->{content_type} ? 1 : 0;
-    return E "/header/Accept", [join(', ', @{$param->{accepts}}), type => $val->{accept}] unless $val->{valid};
-  }
-  if (@{$param->{accepts}} and !$val->{content_type}) {
-    $val->{valid} = 0;
-    return E "/$param->{name}", [join(', ', @{$param->{accepts}}) => type => $val->{content_type}];
-  }
-  if ($param->{required} and !$val->{exists}) {
-    return E "/$param->{name}", [qw(object required)];
-  }
-  if ($val->{exists}) {
-    local $self->{"validate_$direction"} = 1;
-    my @errors = map { $_->path(_prefix_error_path($param->{name}, $_->path)); $_ }
-      $self->validate($val->{value}, $param->{content}{$val->{content_type}}{schema});
-    $val->{valid} = @errors ? 0 : 1;
-    return @errors;
-  }
+    if ( $val->{accept} ) {
+        $val->{content_type}
+          = negotiate_content_type( $param->{accepts}, $val->{accept} );
+        $val->{valid} = $val->{content_type} ? 1 : 0;
+        return E "/header/Accept",
+          [ join( ', ', @{ $param->{accepts} } ), type => $val->{accept} ]
+          unless $val->{valid};
+    }
+    if ( @{ $param->{accepts} } and !$val->{content_type} ) {
+        $val->{valid} = 0;
+        return E "/$param->{name}",
+          [ join( ', ', @{ $param->{accepts} } ) => type =>
+              $val->{content_type} ];
+    }
+    if ( $param->{required} and !$val->{exists} ) {
+        return E "/$param->{name}", [qw(object required)];
+    }
+    if ( $val->{exists} ) {
+        local $self->{"validate_$direction"} = 1;
+        my @errors = map {
+            $_->path( _prefix_error_path( $param->{name}, $_->path ) );
+            $_
+        } $self->validate(
+            $val->{value},
+            $param->{content}{ $val->{content_type} }{schema}
+        );
+        $val->{valid} = @errors ? 0 : 1;
+        return @errors;
+    }
 
-  return;
+    return;
 }
 
 sub _validate_type_boolean {
-  my $self = shift;
-  return $_[2]->{nullable} && !defined $_[0] ? () : $self->SUPER::_validate_type_boolean(@_);
+    my $self = shift;
+    return $_[2]->{nullable}
+      && !defined $_[0] ? () : $self->SUPER::_validate_type_boolean(@_);
 }
 
 sub _validate_type_integer {
-  my $self = shift;
-  return $_[2]->{nullable} && !defined $_[0] ? () : $self->SUPER::_validate_type_integer(@_);
+    my $self = shift;
+    return $_[2]->{nullable}
+      && !defined $_[0] ? () : $self->SUPER::_validate_type_integer(@_);
 }
 
 sub _validate_type_number {
-  my $self = shift;
-  return $_[2]->{nullable} && !defined $_[0] ? () : $self->SUPER::_validate_type_number(@_);
+    my $self = shift;
+    return $_[2]->{nullable}
+      && !defined $_[0] ? () : $self->SUPER::_validate_type_number(@_);
 }
 
 sub _validate_type_object {
-  my ($self, $data, $path, $schema) = @_;
-  return E $path, [object => type => data_type $data] if ref $data ne 'HASH';
-  return shift->SUPER::_validate_type_object(@_) unless $self->{validate_request} or $self->{validate_response};
+    my ( $self, $data, $path, $schema ) = @_;
+    return E $path, [ object => type => data_type $data]
+      if ref $data ne 'HASH';
+    return shift->SUPER::_validate_type_object(@_)
+      unless $self->{validate_request} or $self->{validate_response};
 
-  # TODO: Support external URLs in "mapping"
-  my $discriminator = $schema->{discriminator};
-  if (ref $discriminator eq 'HASH' and $discriminator->{propertyName} and !$self->{inside_discriminator}) {
-    my ($name, $mapping) = @$discriminator{qw(propertyName mapping)};
-    return E $path, "Discriminator $name has no value."          unless my $map_name = $data->{$name};
-    return E $path, "No definition for discriminator $map_name." unless my $url      = $mapping->{$map_name};
-    return E $path, "TODO: Not yet supported: $url"              unless $url =~ s!^#!!;
-    local $self->{inside_discriminator} = 1;    # prevent recursion
-    return $self->_validate($data, $path, $self->get($url));
-  }
+    # TODO: Support external URLs in "mapping"
+    my $discriminator = $schema->{discriminator};
+    if (    ref $discriminator eq 'HASH'
+        and $discriminator->{propertyName}
+        and !$self->{inside_discriminator} )
+    {
+        my ( $name, $mapping ) = @$discriminator{qw(propertyName mapping)};
+        return E $path, "Discriminator $name has no value."
+          unless my $map_name = $data->{$name};
+        return E $path, "No definition for discriminator $map_name."
+          unless my $url = $mapping->{$map_name};
+        return E $path, "TODO: Not yet supported: $url" unless $url =~ s!^#!!;
+        local $self->{inside_discriminator} = 1;    # prevent recursion
+        return $self->_validate( $data, $path, $self->get($url) );
+    }
 
-  return $self->{validate_request}
-    ? $self->_validate_type_object_request($_[1], $path, $schema)
-    : $self->_validate_type_object_response($_[1], $path, $schema);
+    return $self->{validate_request}
+      ? $self->_validate_type_object_request( $_[1], $path, $schema )
+      : $self->_validate_type_object_response( $_[1], $path, $schema );
 }
 
 sub _validate_type_object_request {
-  my ($self, $data, $path, $schema) = @_;
+    my ( $self, $data, $path, $schema ) = @_;
 
-  my (@errors, %ro);
-  for my $name (keys %{$schema->{properties} || {}}) {
-    next unless $schema->{properties}{$name}{readOnly};
-    push @errors, E "$path/$name", "Read-only." if exists $data->{$name};
-    $ro{$name} = 1;
-  }
+    my ( @errors, %ro );
+    for my $name ( keys %{ $schema->{properties} || {} } ) {
+        next unless $schema->{properties}{$name}{readOnly};
+        push @errors, E "$path/$name", "Read-only." if exists $data->{$name};
+        $ro{$name} = 1;
+    }
 
-  local $schema->{required} = [grep { !$ro{$_} } @{$schema->{required} || []}];
+    local $schema->{required}
+      = [ grep { !$ro{$_} } @{ $schema->{required} || [] } ];
 
-  return (
-    @errors,
-    $self->_validate_type_object_min_max($_[1], $path, $schema),
-    $self->_validate_type_object_dependencies($_[1], $path, $schema),
-    $self->_validate_type_object_properties($_[1], $path, $schema),
-  );
+    return (
+        @errors,
+        $self->_validate_type_object_min_max( $_[1], $path, $schema ),
+        $self->_validate_type_object_dependencies( $_[1], $path, $schema ),
+        $self->_validate_type_object_properties( $_[1], $path, $schema ),
+    );
 }
 
 sub _validate_type_object_response {
-  my ($self, $data, $path, $schema) = @_;
+    my ( $self, $data, $path, $schema ) = @_;
 
-  my (@errors, %rw);
-  for my $name (keys %{$schema->{properties} || {}}) {
-    next unless $schema->{properties}{$name}{writeOnly};
-    push @errors, E "$path/$name", "Write-only." if exists $data->{$name};
-    $rw{$name} = 1;
-  }
+    my ( @errors, %rw );
+    for my $name ( keys %{ $schema->{properties} || {} } ) {
+        next unless $schema->{properties}{$name}{writeOnly};
+        push @errors, E "$path/$name", "Write-only." if exists $data->{$name};
+        $rw{$name} = 1;
+    }
 
-  local $schema->{required} = [grep { !$rw{$_} } @{$schema->{required} || []}];
+    local $schema->{required}
+      = [ grep { !$rw{$_} } @{ $schema->{required} || [] } ];
 
-  return (
-    @errors,
-    $self->_validate_type_object_min_max($_[1], $path, $schema),
-    $self->_validate_type_object_dependencies($_[1], $path, $schema),
-    $self->_validate_type_object_properties($_[1], $path, $schema),
-  );
+    return (
+        @errors,
+        $self->_validate_type_object_min_max( $_[1], $path, $schema ),
+        $self->_validate_type_object_dependencies( $_[1], $path, $schema ),
+        $self->_validate_type_object_properties( $_[1], $path, $schema ),
+    );
 }
 
 sub _validate_type_string {
-  my $self = shift;
-  return $_[2]->{nullable} && !defined $_[0] ? () : $self->SUPER::_validate_type_string(@_);
+    my $self = shift;
+    return $_[2]->{nullable}
+      && !defined $_[0] ? () : $self->SUPER::_validate_type_string(@_);
 }
 
 1;

@@ -9,37 +9,40 @@ use Path::Tiny;
 
 our @EXPORT_OK = qw(data_section);
 
-my (%BIN, %CACHE);
+my ( %BIN, %CACHE );
 
-sub data_section { $_[0] ? $_[1] ? _all($_[0])->{$_[1]} : _all($_[0]) : undef }
+sub data_section {
+    $_[0] ? $_[1] ? _all( $_[0] )->{ $_[1] } : _all( $_[0] ) : undef;
+}
 
 sub _all {
-  my $class = shift;
+    my $class = shift;
 
-  return $CACHE{$class} if $CACHE{$class};
-  local $.;
-  my $handle = do { no strict 'refs'; \*{"${class}::DATA"} };
-  return {} unless fileno $handle;
-  seek $handle, 0, 0;
-  my $data = join '', <$handle>;
+    return $CACHE{$class} if $CACHE{$class};
+    local $.;
+    my $handle = do { no strict 'refs'; \*{"${class}::DATA"} };
+    return {} unless fileno $handle;
+    seek $handle, 0, 0;
+    my $data = join '', <$handle>;
 
-  # Ignore everything before __DATA__ (some versions seek to start of file)
-  $data =~ s/^.*\n__DATA__\r?\n/\n/s;
+    # Ignore everything before __DATA__ (some versions seek to start of file)
+    $data =~ s/^.*\n__DATA__\r?\n/\n/s;
 
-  # Ignore everything after __END__
-  $data =~ s/\n__END__\r?\n.*$/\n/s;
+    # Ignore everything after __END__
+    $data =~ s/\n__END__\r?\n.*$/\n/s;
 
-  # Split files
-  (undef, my @files) = split /^@@\s*(.+?)\s*\r?\n/m, $data;
+    # Split files
+    ( undef, my @files ) = split /^@@\s*(.+?)\s*\r?\n/m, $data;
 
-  # Find data
-  my $all = $CACHE{$class} = {};
-  while (@files) {
-    my ($name, $data) = splice @files, 0, 2;
-    $all->{$name} = $name =~ s/\s*\(\s*base64\s*\)$// && ++$BIN{$class}{$name} ? b64_decode $data : $data;
-  }
+    # Find data
+    my $all = $CACHE{$class} = {};
+    while (@files) {
+        my ( $name, $data ) = splice @files, 0, 2;
+        $all->{$name} = $name =~ s/\s*\(\s*base64\s*\)$//
+          && ++$BIN{$class}{$name} ? b64_decode $data : $data;
+    }
 
-  return $all;
+    return $all;
 }
 
 1;

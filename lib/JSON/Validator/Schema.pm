@@ -10,11 +10,12 @@ has errors => (
     is      => 'rw',
     lazy    => 1,
     default => sub {
-        my $self      = shift;
-        my $url       = $self->specification || 'http://json-schema.org/draft-04/schema#';
+        my $self = shift;
+        my $url
+          = $self->specification || 'http://json-schema.org/draft-04/schema#';
         my $validator = $self->new(%$self)->resolve($url);
 
-        return [$validator->validate($self->resolve->data)];
+        return [ $validator->validate( $self->resolve->data ) ];
     },
     clearer => 'clear_errors',
 );
@@ -24,7 +25,9 @@ has id => (
     lazy    => 1,
     default => sub {
         my $data = shift->data;
-        return is_type($data, 'HASH') ? $data->{'$id'} || $data->{id} || '' : '';
+        return is_type( $data, 'HASH' )
+          ? $data->{'$id'} || $data->{id} || ''
+          : '';
     }
 );
 
@@ -39,23 +42,26 @@ has moniker => (
 );
 
 has specification => (
-    is => 'rw',
-    lazy => 1,
+    is      => 'rw',
+    lazy    => 1,
     default => sub {
         my $data = shift->data;
-        is_type($data, 'HASH') ? $data->{'$schema'} || $data->{schema} || '' : '';
+        is_type( $data, 'HASH' )
+          ? $data->{'$schema'} || $data->{schema} || ''
+          : '';
     }
 );
 
 sub bundle {
-  my $self   = shift;
-  my $params = shift || {};
-  return $self->new(%$self)->data($self->SUPER::bundle({schema => $self, %$params}));
+    my $self   = shift;
+    my $params = shift || {};
+    return $self->new(%$self)
+      ->data( $self->SUPER::bundle( { schema => $self, %$params } ) );
 }
 
 sub contains {
-    my ( $self, @args) = @_;
-    return JSON::Pointer->contains($self->data, @args);
+    my ( $self, @args ) = @_;
+    return JSON::Pointer->contains( $self->data, @args );
 }
 
 has data => (
@@ -66,7 +72,7 @@ has data => (
 around data => sub {
     my ( $orig, $self, @args ) = @_;
     my $ret = $self->$orig(@args);
-    if ( @args ) {
+    if (@args) {
         $self->clear_errors;
         return $self;
     }
@@ -76,11 +82,14 @@ around data => sub {
 };
 
 sub get {
-  return JSON::Pointer->get(shift->data, @_) if @_ == 2 and ref $_[1] ne 'ARRAY';
-  return JSON::Validator::Util::schema_extract(shift->data, @_);
+    return JSON::Pointer->get( shift->data, @_ )
+      if @_ == 2 and ref $_[1] ne 'ARRAY';
+    return JSON::Validator::Util::schema_extract( shift->data, @_ );
 }
 
-sub load_and_validate_schema { Carp::confess('load_and_validate_schema(...) is unsupported.') }
+sub load_and_validate_schema {
+    Carp::confess('load_and_validate_schema(...) is unsupported.');
+}
 
 around BUILDARGS => sub {
     my ( $orig, $class, @args ) = @_;
@@ -89,7 +98,7 @@ around BUILDARGS => sub {
 
     my ( $data, %args ) = @args;
 
-    return $class->$orig(data => $data, %args);
+    return $class->$orig( data => $data, %args );
 };
 
 sub BUILD {
@@ -106,16 +115,16 @@ sub BUILD {
 #}
 
 sub resolve {
-  my $self = shift;
-  return $self->data($self->_resolve(@_ ? shift : $self->data));
+    my $self = shift;
+    return $self->data( $self->_resolve( @_ ? shift : $self->data ) );
 }
 
 sub validate {
-  my ($self, $data, $schema) = @_;
-  local $self->{schema}      = $self;    # back compat: set $jv->schema()
-  local $self->{seen}        = {};
-  local $self->{temp_schema} = [];       # make sure random-errors.t does not fail
-  return $self->_validate($_[1], '', $schema || $self->data);
+    my ( $self, $data, $schema ) = @_;
+    local $self->{schema} = $self;    # back compat: set $jv->schema()
+    local $self->{seen}   = {};
+    local $self->{temp_schema} = []; # make sure random-errors.t does not fail
+    return $self->_validate( $_[1], '', $schema || $self->data );
 }
 
 sub schema { $_[0]->can('data') ? $_[0] : $_[0]->SUPER::schema }
@@ -125,9 +134,9 @@ sub _definitions_path_for_ref { ['definitions'] }
 sub _id_key {'id'}
 
 sub _register_root_schema {
-  my ($self, $id, $schema) = @_;
-  $self->SUPER::_register_root_schema($id => $schema);
-  $self->id($id) unless $self->id;
+    my ( $self, $id, $schema ) = @_;
+    $self->SUPER::_register_root_schema( $id => $schema );
+    $self->id($id) unless $self->id;
 }
 
 1;
