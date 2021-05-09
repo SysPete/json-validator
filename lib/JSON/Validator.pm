@@ -201,15 +201,6 @@ sub _build_coerce {
     return +{};
 }
 
-around coerce => sub {
-    my ( $orig, $self, @args ) = @_;
-
-    my $ret = $self->$orig(@args);
-
-    # Mojo back-compat: mutators return $self
-    return @args ? $self : $ret;
-};
-
 sub get {
     JSON::Validator::Util::schema_extract( shift->schema->data, shift );
 }
