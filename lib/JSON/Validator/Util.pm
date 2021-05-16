@@ -19,6 +19,7 @@ use constant SEREAL_SUPPORT => !$ENV{JSON_VALIDATOR_NO_SEREAL}
 our @EXPORT_OK = (
     qw(E data_checksum data_section data_type is_type negotiate_content_type),
     qw(schema_extract json_pointer prefix_errors schema_type),
+    qw(url_escape url_unescape),
 );
 
 sub E { JSON::Validator::Error->new(@_) }
@@ -211,6 +212,32 @@ sub schema_type {
       or defined $_[0]->{exclusiveMinimum};
     return 'const' if exists $_[0]->{const};
     return '';
+}
+
+# hoisted from Mojo::Util
+my %PATTERN;
+sub url_escape {
+  my ($str, $pattern) = @_;
+
+  if ($pattern) {
+    unless (exists $PATTERN{$pattern}) {
+      (my $quoted = $pattern) =~ s!([/\$\[])!\\$1!g;
+      $PATTERN{$pattern}
+        = eval "sub { \$_[0] =~ s/([$quoted])/sprintf '%%%02X', ord \$1/ge }"
+        or Carp::croak $@;
+    }
+    $PATTERN{$pattern}->($str);
+  }
+  else { $str =~ s/([^A-Za-z0-9\-._~])/sprintf '%%%02X', ord $1/ge }
+
+  return $str;
+}
+
+# hoisted from Mojo::Util
+sub url_unescape {
+  my $str = shift;
+  $str =~ s/%([0-9a-fA-F]{2})/chr hex $1/ge;
+  return $str;
 }
 
 # _guessed_right($type, $data);
@@ -419,6 +446,32 @@ faster if you specify "type". Both of the two below is valid, but the one with
 
   {"type": "object", "properties": {}} # Faster
   {"properties": {}}                   # Slower
+
+=head2 url_escape
+
+From L<Mojo::Util/url_escape>.
+
+  my $escaped = url_escape $str;
+  my $escaped = url_escape $str, '^A-Za-z0-9\-._~';
+
+Percent encode unsafe characters in string as described in
+L<RFC 3986|http://tools.ietf.org/html/rfc3986>, the pattern used defaults to
+C<^A-Za-z0-9\-._~>.
+
+  # "foo%3Bbar"
+  url_escape 'foo;bar';
+
+=head2 url_unescape
+
+From L<Mojo::Util/url_unescape>.
+
+  my $str = url_unescape $escaped;
+
+Decode percent encoded characters in string as described in
+L<RFC 3986|http://tools.ietf.org/html/rfc3986>.
+
+  # "foo;bar"
+  url_unescape 'foo%3Bbar';
 
 =head1 SEE ALSO
 

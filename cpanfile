@@ -13,6 +13,7 @@ requires 'MIME::Base64';
 requires 'Moo' => '2.000000';
 requires 'MooX::TypeTiny';
 requires 'namespace::clean';
+requires 'Net::IDN::Punycode';
 requires 'Path::Tiny';
 requires 'Sub::HandlesVia';
 requires 'Sub::Install';
@@ -26,9 +27,9 @@ suggests 'Sereal' => '4.00';
 suggests 'Net::IDN::Encode';
 
 on 'test' => sub {
-    required 'Test::Deep';
-    required 'Test::Exception';
-    required 'Test::More';
+    requires 'Test::Deep';
+    requires 'Test::Exception';
+    requires 'Test::More';
     suggests 'Test::JSON::Schema::Acceptance';
     suggests 'Test2::Tools::Compare';
     suggests 'YAML::PP';

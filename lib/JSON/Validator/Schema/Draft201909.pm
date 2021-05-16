@@ -80,7 +80,7 @@ sub _find_and_resolve_refs {
         my ( $base_url, $topic ) = @{ shift @refs };
         next if is_type $topic, 'BOOL';
         next if !$topic->{'$ref'} or ref $topic->{'$ref'};
-        my $base = Mojo::URL->new( $base_url || $base_url )->fragment(undef);
+        my $base = JSON::Validator::Util::URL->new( $base_url || $base_url )->fragment(undef);
         my ( $other, $ref_url, $fqn )
           = $self->_resolve_ref( $topic->{'$ref'}, $base, $root );
         next if $seen{$fqn}++ and tied %$topic;
@@ -91,7 +91,7 @@ sub _find_and_resolve_refs {
     %seen = ();
     while (@recursive_refs) {
         my ( $base_url, $topic ) = @{ shift @recursive_refs };
-        my $base = Mojo::URL->new( $base_url || $base_url )->fragment(undef);
+        my $base = JSON::Validator::Util::URL->new( $base_url || $base_url )->fragment(undef);
         my ( $other, $ref_url, $fqn )
           = $self->_resolve_ref( $topic->{'$recursiveRef'}, $base, $root );
         next if $seen{$fqn}++ and tied %$topic;

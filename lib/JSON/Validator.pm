@@ -13,7 +13,7 @@ use JSON::Validator::Store;
 use JSON::Validator::Util
   qw(E data_checksum data_type is_type json_pointer prefix_errors schema_type);
 use List::Util qw(uniq);
-use Mojo::URL;
+use JSON::Validator::Util::URL;
 use Path::Tiny;
 use Scalar::Util qw(blessed refaddr);
 use Sub::HandlesVia;
@@ -332,7 +332,7 @@ sub _find_and_resolve_refs {
 
             my $base_url = $base_url;    # do not change the global $base_url
             if ( $topic->{$id_key} and !ref $topic->{$id_key} ) {
-                my $id = Mojo::URL->new( $topic->{$id_key} );
+                my $id = JSON::Validator::Util::URL->new( $topic->{$id_key} );
                 $id = $id->to_abs($base_url) unless $id->is_abs;
                 $self->store->add( $id => $topic );
                 $base_url = $id;
@@ -360,7 +360,7 @@ sub _find_and_resolve_refs {
         my ( $base_url, $topic ) = @{ shift @refs };
         next if is_type $topic, 'BOOL';
         next if !$topic->{'$ref'} or ref $topic->{'$ref'};
-        my $base = Mojo::URL->new( $base_url || $base_url )->fragment(undef);
+        my $base = JSON::Validator::Util::URL->new( $base_url || $base_url )->fragment(undef);
         my ( $other, $ref_url, $fqn )
           = $self->_resolve_ref( $topic->{'$ref'}, $base, \%root );
         tie %$topic, 'JSON::Validator::Ref', $other, "$ref_url", "$fqn";
@@ -461,7 +461,7 @@ sub _resolve {
 
     $cached_id = ''
       unless defined $cached_id;
-    $id = Mojo::URL->new("$id");
+    $id = JSON::Validator::Util::URL->new("$id");
     $self->_register_root_schema( $id => $resolved ) if !$nested and "$id";
     $self->store->add( $id => $resolved ) if "$id" and "$id" ne $cached_id;
     $self->_find_and_resolve_refs( $id => $resolved ) unless $cached_id;
@@ -473,7 +473,7 @@ sub _resolve_ref {
     my ( $self, $ref_url, $base_url, $schema ) = @_;
     $ref_url = "#$ref_url" if $ref_url =~ m!^/!;
 
-    my $fqn     = Mojo::URL->new($ref_url);
+    my $fqn     = JSON::Validator::Util::URL->new($ref_url);
     my $pointer = $fqn->fragment;
     my $other;
 

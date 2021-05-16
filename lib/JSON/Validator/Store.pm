@@ -5,7 +5,7 @@ use File::Spec;
 use HTTP::Tiny;
 use JSON::MaybeXS ();
 use JSON::Validator::Util qw(data_section);
-use Mojo::URL;
+use JSON::Validator::Util::URL;
 use Path::Tiny qw(cwd path);
 use URI;
 use URI::Escape qw(uri_unescape);
@@ -126,7 +126,7 @@ sub _load_from_url {
     return undef unless $url =~ m!^https?://!;
     return $id if $id = $self->exists($url);
 
-    $url = Mojo::URL->new($url)->fragment(undef);
+    $url = JSON::Validator::Util::URL->new($url)->fragment(undef);
     return $id if $id = $self->exists($url);
 
     my $cache_path = $self->cache_paths->[0];
